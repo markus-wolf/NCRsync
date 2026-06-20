@@ -14,9 +14,9 @@ def test_queue_round_trip(tmp_path: Path):
         TransferJob("/r/a.mkv", "/local", "a.mkv", JobStatus.COMPLETED),
         TransferJob("/r/b.mkv", "/local", "b.mkv", JobStatus.QUEUED),
     ]
-    store.save("80078", "/r", "/local", jobs)
+    store.save("myserver", "/r", "/local", jobs)
     data = store.load()
-    assert data["host"] == "80078"
+    assert data["host"] == "myserver"
     assert [j.name for j in data["jobs"]] == ["a.mkv", "b.mkv"]
     assert [j.status for j in data["jobs"]] == [JobStatus.COMPLETED, JobStatus.QUEUED]
 
@@ -42,8 +42,8 @@ def test_running_job_treated_as_interrupted(tmp_path: Path):
 
 def test_session_round_trip(tmp_path: Path):
     store = StateStore(base=tmp_path)
-    store.save_session("80078", "/downloads/tv", "/Users/alex/Downloads")
-    assert store.load_session("80078")["remote_cwd"] == "/downloads/tv"
+    store.save_session("myserver", "/downloads/tv", "~/Downloads")
+    assert store.load_session("myserver")["remote_cwd"] == "/downloads/tv"
     assert store.load_session("other-host") is None  # host mismatch
 
 
@@ -66,11 +66,11 @@ def test_config_precedence(tmp_path: Path):
         theme = "dark"
         [transfer]
         bwlimit = 4000
-        [hosts.80078]
+        [hosts.myserver]
         default_remote_dir = "/media"
         default_local_dir = "~/Movies"
     """))
-    cfg = load_config("80078", path=cfg_file)
+    cfg = load_config("myserver", path=cfg_file)
     assert cfg.rsync_bin == "/custom/rsync"          # override
     assert cfg.ui["theme"] == "dark"                  # override
     assert cfg.ui["show_hidden"] is True              # default preserved

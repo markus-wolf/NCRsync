@@ -87,7 +87,7 @@ cmd = [
 Remote path:
 
 ```text
-/downloads/tv/The.Lincoln.Lawyer.S03.COMPLETE.720p.NF.WEBRip.x264-GalaxyTV[TGx]/The.Lincoln.Lawyer.S03E01.720p.NF.WEBRip.x264-GalaxyTV.mkv
+/downloads/tv/show.s03.complete.720p/release[bracket]/show.s03e01.mkv
 ```
 
 This verifies absolute remote paths, brackets in directory name, no embedded quote bug, and rsync `-s` behavior.

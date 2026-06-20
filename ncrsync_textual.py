@@ -9,9 +9,9 @@ split into the package layout from doc-03. It intentionally avoids mouse,
 uploads, remote delete, multi-host, and detached transfers.
 
 Usage:
-    python ncrsync_textual.py 80078
-    python ncrsync_textual.py alex@example.com
-    python ncrsync_textual.py "alex@example.com -p 2222"
+    python ncrsync_textual.py myserver
+    python ncrsync_textual.py user@example.com
+    python ncrsync_textual.py "user@example.com -p 2222"
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ class TransferJob:
 class SshTarget:
     """Parsed from the CLI target argument.
 
-    Splits a target like ``alex@host -p 2222`` into the host token (used for the
+    Splits a target like ``user@host -p 2222`` into the host token (used for the
     rsync ``host:path`` source) and the remaining ssh options.
     """
 
@@ -603,7 +603,7 @@ class NCRsync(App):
 def main() -> None:
     if len(sys.argv) < 2:
         print(__doc__)
-        print("error: a target is required, e.g.  ncrsync_textual.py 80078", file=sys.stderr)
+        print("error: a target is required, e.g.  ncrsync_textual.py myserver", file=sys.stderr)
         sys.exit(2)
     target = sys.argv[1]
     NCRsync(target).run()

@@ -13,9 +13,9 @@ NCRsync v1 shall not attempt to be a general backup system, bidirectional sync e
 ### 3.1 Start with SSH Target
 
 ```bash
-ncrsync 80078
-ncrsync alex@example.com
-ncrsync "alex@example.com -p 2222"
+ncrsync myserver
+ncrsync user@example.com
+ncrsync "user@example.com -p 2222"
 ```
 
 The target may be an entry in `~/.ssh/config`, a direct `user@host`, or a direct SSH argument string.
@@ -71,7 +71,7 @@ The program shall provide a `doctor` command that checks local rsync version, re
 A successful v1 allows a user to download a file with a path such as:
 
 ```text
-/downloads/tv/The.Show.S03.COMPLETE.720p.WEBRip.x264-GalaxyTV[TGx]/The.Show.S03E01.mkv
+/downloads/tv/show.s03.complete.720p/release[bracket]/show.s03e01.mkv
 ```
 
 without path quoting bugs, and resume after interruption.

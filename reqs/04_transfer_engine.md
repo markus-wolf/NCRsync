@@ -28,7 +28,7 @@ v1 transfer backend: rsync over SSH.
 Correct source format:
 
 ```text
-80078:/absolute/remote/path/file.mkv
+myserver:/absolute/remote/path/file.mkv
 ```
 
 No embedded quotes.

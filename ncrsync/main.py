@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
         default = cfg.get("default_host")
         if not default:
             print(__doc__)
-            print("error: a target is required, e.g.  ncrsync 80078", file=sys.stderr)
+            print("error: a target is required, e.g.  ncrsync myserver", file=sys.stderr)
             return 2
         target_raw = str(default)
     else:

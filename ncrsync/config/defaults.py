@@ -39,7 +39,7 @@ DEFAULTS: dict = {
         "retry_delay_seconds": 5,
     },
     # per-host overrides live under [hosts.<name>], e.g.
-    # "hosts": {"80078": {"default_remote_dir": "/downloads",
+    # "hosts": {"myserver": {"default_remote_dir": "/downloads",
     #                      "default_local_dir": "~/Downloads"}}
     "hosts": {},
 }

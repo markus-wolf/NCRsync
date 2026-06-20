@@ -9,7 +9,7 @@
 ## 2. Example Config
 
 ```toml
-default_host = "80078"
+default_host = "myserver"
 rsync_bin = "/opt/homebrew/bin/rsync"
 
 [ui]
@@ -30,7 +30,7 @@ protect_args = true
 bwlimit = 0
 continue_on_error = false
 
-[hosts.80078]
+[hosts.myserver]
 default_remote_dir = "/downloads"
 default_local_dir = "~/Downloads"
 ```
@@ -88,13 +88,13 @@ bookmarks.json
 ```json
 {
   "version": 1,
-  "host": "80078",
+  "host": "myserver",
   "remote_cwd": "/downloads/tv",
-  "local_cwd": "/Users/alex/Downloads",
+  "local_cwd": "~/Downloads",
   "items": [
     {
       "remote_path": "/downloads/tv/file.mkv",
-      "local_dest": "/Users/alex/Downloads",
+      "local_dest": "~/Downloads",
       "status": "queued",
       "last_error": null
     }

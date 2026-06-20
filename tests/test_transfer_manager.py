@@ -27,7 +27,7 @@ class FakeRunner:
 
 
 def make_manager(codes, **settings_kw):
-    target = SshTarget.parse("80078")
+    target = SshTarget.parse("myserver")
     settings = TransferSettings(retry_delay_seconds=0, **settings_kw)
     mgr = TransferManager(target, CAPS, settings)
     mgr._runner = FakeRunner(codes)

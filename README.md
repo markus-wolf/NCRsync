@@ -54,9 +54,9 @@ python -m ncrsync TARGET
 `TARGET` is an SSH host alias or connection string, for example:
 
 ```bash
-python -m ncrsync 80078
-python -m ncrsync alex@example.com
-python -m ncrsync "alex@example.com -p 2222"
+python -m ncrsync myserver
+python -m ncrsync user@example.com
+python -m ncrsync "user@example.com -p 2222"
 ```
 
 If `default_host` is set in config (see below), you can omit the target:
@@ -78,7 +78,7 @@ Optional settings live at:
 Example:
 
 ```toml
-default_host = "80078"
+default_host = "myserver"
 rsync_bin = "/opt/homebrew/bin/rsync"
 
 [ui]
@@ -89,7 +89,7 @@ show_hidden = true
 append_verify = true
 partial = true
 
-[hosts.80078]
+[hosts.myserver]
 default_remote_dir = "/downloads"
 default_local_dir = "~/Downloads"
 ```

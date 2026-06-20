@@ -18,14 +18,14 @@ pip install textual-dev
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ NCRsync | Host: 80078 | Remote: /downloads/tv | Local: ~/Downloads           │
+│ NCRsync | Host: myserver | Remote: /downloads/tv | Local: ~/Downloads           │
 ├──────────────────────────────────────┬───────────────────────────────────────┤
 │ RemotePane                           │ LocalPane                             │
-│ /downloads/tv                        │ /Users/alex/Downloads                 │
+│ /downloads/tv                        │ ~/Downloads                           │
 │                                      │                                       │
-│ > [D] The.Show.S03                   │   file1.mkv                           │
-│   The.Show.S03E01.mkv                │   file2.mkv                           │
-│   The.Show.S03E02.mkv                │                                       │
+│ > [D] show.s03                       │   file1.mkv                           │
+│   show.s03e01.mkv                    │   file2.mkv                           │
+│   show.s03e02.mkv                    │                                       │
 ├──────────────────────────────────────┴───────────────────────────────────────┤
 │ QueuePane: 2 queued, 0 running, 0 failed                                     │
 ├──────────────────────────────────────────────────────────────────────────────┤

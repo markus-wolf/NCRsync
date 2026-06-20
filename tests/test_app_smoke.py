@@ -10,10 +10,10 @@ from ncrsync.ui.panes import FilePane, QueuePane
 @pytest.mark.asyncio
 async def test_mount_and_queue_flow(tmp_path):
     # use a config with a local dir that exists and no remote dependency
-    cfg = load_config("80078")
+    cfg = load_config("myserver")
     cfg._host_cfg = {"default_remote_dir": "/downloads", "default_local_dir": str(tmp_path)}
 
-    app = NCRsync("80078", config=cfg)
+    app = NCRsync("myserver", config=cfg)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         # all widgets present

@@ -4,7 +4,7 @@
 
 Goal: create a running Textual app with Header, Footer, remote pane placeholder, local pane placeholder, queue pane, log pane, command input, and key bindings.
 
-Exit criteria: `python -m ncrsync 80078` opens a UI.
+Exit criteria: `python -m ncrsync myserver` opens a UI.
 
 ## Phase 1 - Real Browsing
 

@@ -14,8 +14,8 @@ from ncrsync.transfer.rsync_caps import compute_caps
 from ncrsync.transfer.rsync_runner import build_rsync_argv
 
 BRACKET_PATH = (
-    "/downloads/tv/The.Lincoln.Lawyer.S03.COMPLETE.720p.NF.WEBRip.x264-GalaxyTV[TGx]/"
-    "The.Lincoln.Lawyer.S03E01.720p.NF.WEBRip.x264-GalaxyTV.mkv"
+    "/downloads/tv/show.s03.complete.720p/release[bracket]/"
+    "show.s03e01.mkv"
 )
 
 MODERN = compute_caps((3, 4, 4), (3, 4, 4))
@@ -23,20 +23,20 @@ LEGACY = compute_caps((3, 4, 4), (2, 6, 9))
 
 
 def test_target_parse_alias():
-    t = SshTarget.parse("80078")
-    assert t.host == "80078" and t.opts == []
+    t = SshTarget.parse("myserver")
+    assert t.host == "myserver" and t.opts == []
 
 
 def test_target_parse_user_host():
-    t = SshTarget.parse("alex@example.com")
-    assert t.host == "alex@example.com"
+    t = SshTarget.parse("user@example.com")
+    assert t.host == "user@example.com"
 
 
 def test_target_parse_with_port():
-    t = SshTarget.parse("alex@example.com -p 2222")
-    assert t.host == "alex@example.com"
+    t = SshTarget.parse("user@example.com -p 2222")
+    assert t.host == "user@example.com"
     assert t.opts == ["-p", "2222"]
-    assert t.ssh_argv("echo hi") == ["ssh", "-p", "2222", "alex@example.com", "echo hi"]
+    assert t.ssh_argv("echo hi") == ["ssh", "-p", "2222", "user@example.com", "echo hi"]
 
 
 def test_target_parse_no_host_raises():
@@ -45,27 +45,27 @@ def test_target_parse_no_host_raises():
 
 
 def test_bracket_source_is_raw_unquoted():
-    t = SshTarget.parse("80078")
-    argv = build_rsync_argv(t, BRACKET_PATH, "/Users/alex/Downloads", MODERN, rsync_bin="rsync")
+    t = SshTarget.parse("myserver")
+    argv = build_rsync_argv(t, BRACKET_PATH, "~/Downloads", MODERN, rsync_bin="rsync")
     source = argv[-2]
-    assert source == f"80078:{BRACKET_PATH}"
+    assert source == f"myserver:{BRACKET_PATH}"
     assert "'" not in source and "\\" not in source  # no quoting/escaping
     assert "-s" in argv  # protect-args present on modern rsync
 
 
 def test_dest_ends_with_slash():
-    t = SshTarget.parse("80078")
-    argv = build_rsync_argv(t, BRACKET_PATH, "/Users/alex/Downloads", MODERN)
+    t = SshTarget.parse("myserver")
+    argv = build_rsync_argv(t, BRACKET_PATH, "~/Downloads", MODERN)
     assert argv[-1].endswith("/")
 
 
 def test_legacy_degraded_quotes_path_and_drops_protect_args():
-    t = SshTarget.parse("80078")
+    t = SshTarget.parse("myserver")
     argv = build_rsync_argv(t, "/p/has space.mkv", "/dest", LEGACY)
     assert "-s" not in argv
     source = argv[-2]
     # legacy: path portion is shell-quoted so the remote shell won't split it
-    assert source == "80078:'/p/has space.mkv'"
+    assert source == "myserver:'/p/has space.mkv'"
 
 
 def test_remote_list_cmd_is_shell_quoted():
@@ -76,12 +76,12 @@ def test_remote_list_cmd_is_shell_quoted():
 
 def test_parse_find_output():
     sample = (
-        "d\t4096\t2026-06-20 10:00:00.0\tdrwxr-xr-x\tThe.Show.S03\n"
-        "f\t734003200\t2026-06-19 22:15:03.0\t-rw-r--r--\tThe.Show.S03E01.mkv\n"
+        "d\t4096\t2026-06-20 10:00:00.0\tdrwxr-xr-x\tshow.s03\n"
+        "f\t734003200\t2026-06-19 22:15:03.0\t-rw-r--r--\tshow.s03e01.mkv\n"
     )
     entries = sort_entries(parse_find_output(sample, "/downloads/tv"))
     assert [e.kind for e in entries] == ["dir", "file"]
-    assert entries[1].path == "/downloads/tv/The.Show.S03E01.mkv"
+    assert entries[1].path == "/downloads/tv/show.s03e01.mkv"
     assert entries[1].size == 734003200
 
 
