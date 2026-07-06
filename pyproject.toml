@@ -1,0 +1,35 @@
+[project]
+name = "ncrsync"
+version = "0.2.0"
+description = "Norton Commander-style terminal file manager for remote SSH hosts with resumable rsync downloads"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Markus Wolf" }]
+keywords = ["rsync", "ssh", "tui", "file-manager", "textual"]
+dependencies = [
+    "textual>=8.2.7,<9",
+]
+
+[project.urls]
+Repository = "https://github.com/markus-wolf/NCRsync"
+
+[project.scripts]
+ncrsync = "ncrsync.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# flat layout: the ncrsync/ package lives at the repo root, not under src/
+module-root = ""
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

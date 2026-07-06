@@ -28,48 +28,44 @@ NCRsync is not just an rsync wrapper. It is a keyboard-first, dual-pane TUI wher
 
 ## Install
 
-Clone the repository and create a virtual environment:
+The project is managed with [uv](https://docs.astral.sh/uv/). Clone and sync:
 
 ```bash
-git clone <repo-url> NCRsync
+git clone https://github.com/markus-wolf/NCRsync.git
 cd NCRsync
-python3 -m venv .venv
-source .venv/bin/activate
+uv sync
 ```
 
-Install dependencies:
+`uv sync` creates `.venv`, installs pinned dependencies from `uv.lock` (dev
+tools included), and installs the `ncrsync` command.
+
+To try it without cloning:
 
 ```bash
-pip install -r requirements.txt
+uvx --from git+https://github.com/markus-wolf/NCRsync ncrsync myserver
 ```
 
-For development (tests):
-
-```bash
-pip install -r requirements-dev.txt
-```
+or install it as a persistent tool: `uv tool install git+https://github.com/markus-wolf/NCRsync`.
 
 ## Run
 
-From the project root with the virtual environment activated:
+From the project root:
 
 ```bash
-python -m ncrsync TARGET
+uv run ncrsync TARGET
 ```
 
 `TARGET` is an SSH host alias or connection string, for example:
 
 ```bash
-python -m ncrsync myserver
-python -m ncrsync user@example.com
-python -m ncrsync "user@example.com -p 2222"
+uv run ncrsync myserver
+uv run ncrsync user@example.com
+uv run ncrsync "user@example.com -p 2222"
 ```
 
-If `default_host` is set in config (see below), you can omit the target:
-
-```bash
-python -m ncrsync
-```
+If `default_host` is set in config (see below), you can omit the target. With
+the venv activated (`source .venv/bin/activate`), plain `ncrsync TARGET` and
+`python -m ncrsync TARGET` also work.
 
 Inside the app, type commands at the `:` prompt or use the function keys shown
 in the footer. Run `doctor` after the first connect: it verifies SSH
@@ -155,7 +151,7 @@ Logs and application state are stored outside the repo under `~/Library/Logs/ncr
 ## Tests
 
 ```bash
-pytest
+uv run pytest
 ```
 
 ## Specifications

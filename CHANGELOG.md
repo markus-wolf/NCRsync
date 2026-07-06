@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Switched packaging and dependency management to
+  [uv](https://docs.astral.sh/uv/): `pyproject.toml` (uv_build backend) with a
+  committed `uv.lock` replaces `requirements*.txt`; pytest config moved from
+  `pytest.ini` into `pyproject.toml`. New `ncrsync` console entry point
+  (`uv run ncrsync TARGET`); installable via `uv tool install` / `uvx`.
+
 ## 0.2.0 — 2026-07-05
 
 Foundation + reliability release, plus review fixes and a UI consistency pass.
