@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — 2026-07-05
+## 0.2.0 — 2026-07-05
+
+Foundation + reliability release, plus review fixes and a UI consistency pass.
 
 ### Fixed (UI/state review)
 
@@ -43,9 +45,9 @@
 - `transfer.protect_args = false` is honored: drops `-s` and quotes the remote
   path portion, as an escape hatch on modern rsync.
 
-## 0.2.0 — 2026-06-20
+### Foundation + reliability (2026-06-20)
 
-Foundation + reliability pass: split the single-file prototype into the
+Split the single-file prototype into the
 `ncrsync/` package (`reqs/03_architecture.md` layout); TOML config with
 per-host overrides; session/queue persistence with startup recovery; file
 logging with full rsync argv; rsync capability auto-detection
