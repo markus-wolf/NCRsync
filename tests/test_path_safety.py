@@ -68,6 +68,14 @@ def test_legacy_degraded_quotes_path_and_drops_protect_args():
     assert source == "myserver:'/p/has space.mkv'"
 
 
+def test_protect_args_config_disable_on_modern_rsync():
+    # transfer.protect_args = false must drop -s and quote the path even on 3.4
+    t = SshTarget.parse("myserver")
+    argv = build_rsync_argv(t, "/p/has space.mkv", "/dest", MODERN, protect_args_pref=False)
+    assert "-s" not in argv
+    assert argv[-2] == "myserver:'/p/has space.mkv'"
+
+
 def test_remote_list_cmd_is_shell_quoted():
     cmd = build_remote_list_cmd("/downloads/tv/has space[bracket]")
     assert "'/downloads/tv/has space[bracket]'" in cmd

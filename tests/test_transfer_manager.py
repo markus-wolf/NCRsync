@@ -86,6 +86,15 @@ async def test_continue_on_error_proceeds_to_next_job():
 
 
 @pytest.mark.asyncio
+async def test_remove_running_job_refused():
+    mgr = make_manager([0])
+    mgr.add("/r/a.mkv", "a.mkv", "/local")
+    mgr.jobs[0].status = JobStatus.RUNNING
+    assert mgr.remove_at(0) is None
+    assert len(mgr.jobs) == 1  # still there; must cancel first
+
+
+@pytest.mark.asyncio
 async def test_add_dedupes():
     mgr = make_manager([0])
     assert mgr.add("/r/a.mkv", "a.mkv", "/local") is True

@@ -3,6 +3,7 @@ unfinished queue from a previous session is found (doc-06 §9).
 """
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import Grid, VerticalScroll
 from textual.screen import ModalScreen
@@ -44,7 +45,8 @@ class RecoveryScreen(ModalScreen[str]):
             )
             with VerticalScroll(id="joblist"):
                 for j in unfinished:
-                    yield Static(f"• [{j.status.value}] {j.name}")
+                    # escape: Static parses markup; names may contain brackets
+                    yield Static(escape(f"• [{j.status.value}] {j.name}"))
             yield Button("Resume", variant="success", id="resume")
             yield Button("View", variant="primary", id="view")
             yield Button("Discard", variant="error", id="discard")

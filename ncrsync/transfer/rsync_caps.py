@@ -68,10 +68,10 @@ def compute_caps(local: Optional[Version], remote: Optional[Version]) -> RsyncCa
 
 
 def select_flags(caps: RsyncCaps, *, append_verify_pref: bool = True,
-                 partial: bool = True) -> list[str]:
+                 partial: bool = True, protect_args_pref: bool = True) -> list[str]:
     """Resume/path/progress flags for this capability set (order-stable)."""
     flags: list[str] = []
-    if caps.protect_args:
+    if caps.protect_args and protect_args_pref:
         flags.append("-s")
     if partial:
         flags.append("--partial")

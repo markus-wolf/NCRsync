@@ -28,6 +28,7 @@ class TransferSettings:
     timeout: int = 120
     bwlimit: int = 0
     append_verify_pref: bool = True
+    protect_args_pref: bool = True
     continue_on_error: bool = False
     max_retries: int = 3
     retry_delay_seconds: int = 5
@@ -63,7 +64,11 @@ class TransferManager:
         return True
 
     def remove_at(self, index: int) -> Optional[TransferJob]:
+        """Remove a job by index. A RUNNING job is refused - the subprocess
+        would keep transferring invisibly; it must be cancelled first."""
         if 0 <= index < len(self.jobs):
+            if self.jobs[index].status is JobStatus.RUNNING:
+                return None
             j = self.jobs.pop(index)
             self._on_status()
             return j
@@ -113,6 +118,7 @@ class TransferManager:
                 timeout=self.settings.timeout,
                 bwlimit=self.settings.bwlimit,
                 append_verify_pref=self.settings.append_verify_pref,
+                protect_args_pref=self.settings.protect_args_pref,
             )
             rc = await self._runner.run(argv, self._make_sink(job))
 

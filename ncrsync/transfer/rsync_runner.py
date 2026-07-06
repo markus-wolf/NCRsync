@@ -24,10 +24,10 @@ TRANSIENT_EXIT_CODES = {10, 12, 30, 35}
 LineSink = Callable[[str], None]
 
 
-def _format_source(target: SshTarget, remote_path: str, caps: RsyncCaps) -> str:
-    if caps.protect_args:
+def _format_source(target: SshTarget, remote_path: str, use_protect_args: bool) -> str:
+    if use_protect_args:
         return f"{target.host}:{remote_path}"          # raw, -s protects it
-    return f"{target.host}:{shlex.quote(remote_path)}"  # legacy degraded mode
+    return f"{target.host}:{shlex.quote(remote_path)}"  # legacy/disabled: quote for remote shell
 
 
 def build_rsync_argv(
@@ -41,12 +41,16 @@ def build_rsync_argv(
     timeout: int = 120,
     bwlimit: int = 0,
     append_verify_pref: bool = True,
+    protect_args_pref: bool = True,
 ) -> list[str]:
     """Build the rsync argv for a single download."""
-    source = _format_source(target, remote_path, caps)
+    use_protect = caps.protect_args and protect_args_pref
+    source = _format_source(target, remote_path, use_protect)
     dest = local_dest if local_dest.endswith("/") else local_dest + "/"
     argv = [rsync_bin, "-av", "--human-readable", f"--timeout={timeout}"]
-    argv += select_flags(caps, append_verify_pref=append_verify_pref)
+    argv += select_flags(
+        caps, append_verify_pref=append_verify_pref, protect_args_pref=protect_args_pref
+    )
     if bwlimit and bwlimit > 0:
         argv.append(f"--bwlimit={bwlimit}")
     argv += ["-e", target.rsync_e_value(keepalive_opts)]

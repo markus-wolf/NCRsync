@@ -5,6 +5,7 @@ the entries backing each row so the app can map cursor -> entry.
 """
 from __future__ import annotations
 
+from rich.text import Text
 from textual.widgets import DataTable
 
 from ..model.file_entry import FileEntry, human_size
@@ -28,7 +29,12 @@ class FilePane(DataTable):
         self.clear()
         for e in entries:
             mark = "*" if e.path in selected else ""
-            name = f"[b]{e.name}/[/]" if e.kind == "dir" else e.name
+            # Text objects bypass DataTable's markup parsing, so names like
+            # x[TGx].mkv are shown verbatim
+            if e.kind == "dir":
+                name = Text(e.name + "/", style="bold")
+            else:
+                name = Text(e.name)
             size = "<DIR>" if e.kind == "dir" else human_size(e.size)
             self.add_row(mark, name, size, e.mtime or "", key=e.path)
         if entries:
@@ -52,6 +58,6 @@ class QueuePane(DataTable):
         prev = self.cursor_row
         self.clear()
         for status, name, info in rows:
-            self.add_row(status, name, info)
+            self.add_row(status, Text(name), Text(info))
         if rows:
             self.move_cursor(row=min(prev or 0, len(rows) - 1))
