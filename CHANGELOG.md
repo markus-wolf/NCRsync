@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-07-05
+
+- Waiting indicator: a rotating `/-\|` spinner leads the header directory line
+  while admin operations run (remote listing/`cd`/refresh, capability
+  detection, `doctor`). Driven by worker state, so overlapping and cancelled
+  operations are handled; transfers are excluded (they have the progress bar).
+
 ## 0.3.0 — 2026-07-05
 
 - New `deselect PATTERN` command (same glob syntax as `select`): clears

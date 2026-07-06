@@ -1,5 +1,7 @@
 """Pilot tests for the UI-consistency improvements: dir queueing, Enter-on-file,
-command usage feedback, command history, theme."""
+command usage feedback, command history, theme, busy spinner."""
+import asyncio
+
 import pytest
 
 from ncrsync.model.file_entry import FileEntry
@@ -13,6 +15,14 @@ def fake_remote(app, entries):
     pane = app.query_one("#remote", FilePane)
     pane.populate(entries, set())
     return pane
+
+
+async def settle_startup_workers(app, pilot, timeout_ticks=30):
+    """Wait for the on-mount remote/caps workers to finish or fail."""
+    for _ in range(timeout_ticks):
+        if not app._busy:
+            return
+        await pilot.pause(0.1)
 
 
 @pytest.mark.asyncio
@@ -88,6 +98,44 @@ async def test_command_history_up_down(tmp_path):
         assert inp.value == "select *.mkv"
         await pilot.press("down")
         assert inp.value == ""  # back to the fresh line
+
+
+@pytest.mark.asyncio
+async def test_spinner_during_remote_listing(tmp_path):
+    app = make_app(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await settle_startup_workers(app, pilot)
+        assert not app.sub_title[0] in "/-\\|"  # idle: no spinner
+
+        async def slow_list():
+            await asyncio.sleep(0.6)
+            return []
+
+        app.remote.list_dir = slow_list
+        app.refresh_remote()
+        await pilot.pause(0.25)
+        # spinner frame leads the directory line while listing
+        assert app.sub_title[0] in "/-\\|" and app.sub_title[1] == " "
+        await pilot.pause(0.8)
+        assert app.sub_title.startswith("myserver |")  # clean again
+
+
+@pytest.mark.asyncio
+async def test_spinner_until_last_busy_worker_finishes(tmp_path):
+    app = make_app(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await settle_startup_workers(app, pilot)
+        app.run_worker(asyncio.sleep(0.3), group="caps")
+        app.run_worker(asyncio.sleep(0.9), group="doctor")
+        await pilot.pause(0.15)
+        assert app._busy and app.sub_title[0] in "/-\\|"
+        await pilot.pause(0.4)  # caps worker done, doctor still running
+        assert app._busy
+        await pilot.pause(0.8)  # everything done
+        assert not app._busy
+        assert app.sub_title.startswith("myserver |")
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.worker import Worker, WorkerState
 
 from .config.config_loader import Config, load_config
 from .diagnostics.doctor import run_doctor
@@ -38,6 +39,12 @@ from .ui.panes import FilePane, QueuePane
 from .ui.themes import NC_BLUE
 
 log = logging.getLogger("ncrsync")
+
+# waiting indicator for admin (SSH round-trip) operations
+SPINNER_FRAMES = "/-\\|"
+# worker groups that drive the spinner; "transfer" is excluded on purpose -
+# downloads have their own progress display in the status bar
+BUSY_GROUPS = frozenset({"remote", "caps", "doctor"})
 
 
 class NCRsync(App):
@@ -86,6 +93,10 @@ class NCRsync(App):
         self._foreign_queue = False
         # suppress the misleading provisional tier until detect_caps() finishes
         self._caps_ready = False
+        # spinner state; the timer is created on mount and stays paused when idle
+        self._busy = False
+        self._spin_i = 0
+        self._spin_timer = None
 
         # provisional caps from local rsync only; refined by _detect_caps()
         self.caps: RsyncCaps = compute_caps((0, 0, 0), None)
@@ -138,6 +149,7 @@ class NCRsync(App):
         # the log is display-only; keeping it out of the focus chain prevents
         # app-level bindings (backspace/space) firing while it is focused
         self.query_one("#log", RichLog).can_focus = False
+        self._spin_timer = self.set_interval(0.1, self._tick_spinner, pause=True)
         self.state.add_recent_host(self.target.host)
         self._restore_session()
         self._update_title()
@@ -159,7 +171,30 @@ class NCRsync(App):
 
     def _update_title(self) -> None:
         self.title = "NCRsync"
-        self.sub_title = f"{self.target.host} | R:{self.remote.cwd} | L:{self.local.cwd}"
+        # spinner leads the line: sub_title truncates from the tail on narrow
+        # terminals, so a trailing spinner could vanish behind long paths
+        spin = f"{SPINNER_FRAMES[self._spin_i]} " if self._busy else ""
+        self.sub_title = f"{spin}{self.target.host} | R:{self.remote.cwd} | L:{self.local.cwd}"
+
+    def _tick_spinner(self) -> None:
+        self._spin_i = (self._spin_i + 1) % len(SPINNER_FRAMES)
+        self._update_title()
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.worker.group not in BUSY_GROUPS:
+            return
+        busy = any(
+            w.group in BUSY_GROUPS and w.state is WorkerState.RUNNING
+            for w in self.workers
+        )
+        if busy == self._busy:
+            return
+        self._busy = busy
+        if self._spin_timer is not None:
+            (self._spin_timer.resume if busy else self._spin_timer.pause)()
+        if not busy:
+            self._spin_i = 0
+        self._update_title()
 
     def log_line(self, msg: str) -> None:
         """Write a message that intentionally contains Rich markup."""
