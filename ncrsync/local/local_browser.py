@@ -30,7 +30,7 @@ def list_local(local_cwd: Path, show_hidden: bool = True) -> list[FileEntry]:
                 path=str(child.resolve()),
                 kind=kind,
                 size=st.st_size if kind == "file" else None,
-                mtime=datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                mtime=datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
             )
         )
     return entries

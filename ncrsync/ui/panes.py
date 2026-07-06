@@ -21,7 +21,7 @@ class FilePane(DataTable):
     def on_mount(self) -> None:
         self.cursor_type = "row"
         self.zebra_stripes = True
-        self.add_columns("", "name", "size", "mtime")
+        self.add_columns("size", "", "name", "mtime")
 
     def populate(self, entries: list[FileEntry], selected: set[str]) -> None:
         prev = self.cursor_row
@@ -35,8 +35,8 @@ class FilePane(DataTable):
                 name = Text(e.name + "/", style="bold")
             else:
                 name = Text(e.name)
-            size = "<DIR>" if e.kind == "dir" else human_size(e.size)
-            self.add_row(mark, name, size, e.mtime or "", key=e.path)
+            size = Text("<DIR>" if e.kind == "dir" else human_size(e.size), justify="right")
+            self.add_row(size, mark, name, e.mtime or "", key=e.path)
         if entries:
             self.move_cursor(row=min(prev or 0, len(entries) - 1))
 

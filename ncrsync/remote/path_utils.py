@@ -11,8 +11,9 @@ import shlex
 from ..model.file_entry import FileEntry, Kind
 
 # find -printf escapes (\t \n) are interpreted by find on the remote, so they
-# are sent as literal backslash sequences.
-_FIND_PRINTF = r"%y\t%s\t%TY-%Tm-%Td %TH:%TM:%TS\t%M\t%f\n"
+# are sent as literal backslash sequences. Minute precision matches the local
+# pane (%TS would add fractional seconds).
+_FIND_PRINTF = r"%y\t%s\t%TY-%Tm-%Td %TH:%TM\t%M\t%f\n"
 
 
 def build_remote_list_cmd(remote_cwd: str) -> str:
