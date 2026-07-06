@@ -121,7 +121,7 @@ class NCRsync(App):
         yield Static("", id="status")
         yield RichLog(id="log", highlight=True, markup=True, wrap=False)
         yield CommandInput(
-            placeholder=": command (cd, lcd, ls, ll, select, queue, download, doctor, mkdir, clear, quit)",
+            placeholder=": command (cd, lcd, ls, ll, select, deselect, queue, download, doctor, mkdir, clear, quit)",
             id="command",
         )
         yield Footer()
@@ -429,6 +429,8 @@ class NCRsync(App):
             self._cmd_long_listing()
         elif cmd == "select":
             self._cmd_select(arg or "*")
+        elif cmd == "deselect":
+            self._cmd_deselect(arg or "*")
         elif cmd == "mkdir":
             if not arg:
                 self.log_line("[dim]usage: mkdir LOCAL_DIR_NAME[/]")
@@ -471,6 +473,26 @@ class NCRsync(App):
                 n += 1
         pane.populate(pane.entries, self.remote_selected)
         self.log_line(f"[green]selected[/] {n} item(s) matching {escape(repr(pattern))}")
+
+    def _cmd_deselect(self, pattern: str) -> None:
+        """Inverse of select: clear matching marks and drop matching queued jobs."""
+        pane = self.query_one("#remote", FilePane)
+        unmarked = 0
+        for e in pane.entries:
+            if e.path in self.remote_selected and fnmatch.fnmatch(e.name, pattern):
+                self.remote_selected.discard(e.path)
+                unmarked += 1
+        pane.populate(pane.entries, self.remote_selected)
+        removed = self.manager.remove_matching(pattern)
+        self.log_line(
+            f"[yellow]deselected[/] {unmarked} mark(s), removed {len(removed)} "
+            f"queued job(s) matching {escape(repr(pattern))}"
+        )
+        if any(
+            j.status is JobStatus.RUNNING and fnmatch.fnmatch(j.name.rstrip("/"), pattern)
+            for j in self.manager.jobs
+        ):
+            self.log_line("[dim]running job kept - press F7 to cancel it[/]")
 
     def on_unmount(self) -> None:
         # persist final session + queue state on exit

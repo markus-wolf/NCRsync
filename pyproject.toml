@@ -1,6 +1,6 @@
 [project]
 name = "ncrsync"
-version = "0.2.0"
+version = "0.3.0"
 description = "Norton Commander-style terminal file manager for remote SSH hosts with resumable rsync downloads"
 readme = "README.md"
 requires-python = ">=3.11"

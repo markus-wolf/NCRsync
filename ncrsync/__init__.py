@@ -2,4 +2,4 @@
 using rsync for reliable, resumable downloads.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

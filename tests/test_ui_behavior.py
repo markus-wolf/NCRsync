@@ -46,6 +46,29 @@ async def test_enter_on_remote_file_toggles_selection(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_deselect_clears_marks_and_queued_jobs(tmp_path):
+    app = make_app(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        fake_remote(app, [
+            FileEntry("a.mkv", "/downloads/a.mkv", "file", 10),
+            FileEntry("b.srt", "/downloads/b.srt", "file", 10),
+        ])
+        # marks: select all, deselect *.srt -> only a.mkv stays marked
+        app._cmd_select("*")
+        app._cmd_deselect("*.srt")
+        assert app.remote_selected == {"/downloads/a.mkv"}
+        # queue both, then deselect *.srt -> only a.mkv stays queued
+        app._cmd_select("*")
+        app.action_queue()
+        await pilot.pause()
+        assert len(app.manager.jobs) == 2
+        app._cmd_deselect("*.srt")
+        await pilot.pause()
+        assert [j.name for j in app.manager.jobs] == ["a.mkv"]
+
+
+@pytest.mark.asyncio
 async def test_command_history_up_down(tmp_path):
     app = make_app(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:

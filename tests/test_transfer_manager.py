@@ -95,6 +95,28 @@ async def test_remove_running_job_refused():
 
 
 @pytest.mark.asyncio
+async def test_remove_matching_keeps_running_and_matches_dir_names():
+    mgr = make_manager([0])
+    mgr.add("/r/a.mkv", "a.mkv", "/local")
+    mgr.add("/r/b.mkv", "b.mkv", "/local")
+    mgr.add("/r/Season.03", "Season.03/", "/local")  # dir job, trailing /
+    mgr.jobs[0].status = JobStatus.RUNNING
+    removed = mgr.remove_matching("*")
+    assert sorted(j.name for j in removed) == ["Season.03/", "b.mkv"]
+    assert [j.name for j in mgr.jobs] == ["a.mkv"]  # running survives
+
+
+@pytest.mark.asyncio
+async def test_remove_matching_pattern():
+    mgr = make_manager([0])
+    mgr.add("/r/a.mkv", "a.mkv", "/local")
+    mgr.add("/r/b.srt", "b.srt", "/local")
+    removed = mgr.remove_matching("*.srt")
+    assert [j.name for j in removed] == ["b.srt"]
+    assert [j.name for j in mgr.jobs] == ["a.mkv"]
+
+
+@pytest.mark.asyncio
 async def test_add_dedupes():
     mgr = make_manager([0])
     assert mgr.add("/r/a.mkv", "a.mkv", "/local") is True

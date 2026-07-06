@@ -8,6 +8,7 @@ makes each retry resume the partial file.
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -73,6 +74,20 @@ class TransferManager:
             self._on_status()
             return j
         return None
+
+    def remove_matching(self, pattern: str) -> list[TransferJob]:
+        """Remove jobs whose name matches the glob pattern. RUNNING jobs are
+        kept (cancel first); dir jobs match with or without the trailing /."""
+        removed = [
+            j for j in self.jobs
+            if j.status is not JobStatus.RUNNING
+            and fnmatch.fnmatch(j.name.rstrip("/"), pattern)
+        ]
+        if removed:
+            gone = set(map(id, removed))
+            self.jobs = [j for j in self.jobs if id(j) not in gone]
+            self._on_status()
+        return removed
 
     def clear(self) -> None:
         self.jobs.clear()

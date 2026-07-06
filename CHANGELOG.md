@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-07-05
+
+- New `deselect PATTERN` command (same glob syntax as `select`): clears
+  matching selection marks and removes matching jobs from the queue. Running
+  jobs are kept (cancel with F7 first).
+- File panes: size is the first column (right-aligned); timestamps show
+  minute precision (`YYYY-MM-DD HH:MM`) on both panes.
 
 - Switched packaging and dependency management to
   [uv](https://docs.astral.sh/uv/): `pyproject.toml` (uv_build backend) with a
