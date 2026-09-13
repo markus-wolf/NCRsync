@@ -20,8 +20,13 @@ def log_dir() -> Path:
     return Path.home() / ".local" / "state" / "ncrsync" / "logs"
 
 
-def setup_logging(target_host: str, argv: list[str]) -> Path:
-    """Configure the 'ncrsync' logger with a session file. Returns the file path."""
+def setup_logging(target_host: str, argv: list[str],
+                  version_label: str | None = None) -> Path:
+    """Configure the 'ncrsync' logger with a session file. Returns the file path.
+
+    ``version_label`` should be the resolved build (see version.resolve); the
+    bare release understates what is running from a checkout past its tag.
+    """
     d = log_dir()
     d.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -45,7 +50,7 @@ def setup_logging(target_host: str, argv: list[str]) -> Path:
     except OSError:
         pass  # symlinks may be unavailable; session file is authoritative
 
-    logger.info("NCRsync %s starting", __version__)
+    logger.info("NCRsync %s starting", version_label or __version__)
     logger.info("argv: %s", " ".join(argv))
     logger.info("platform: %s", platform.platform())
     logger.info("python: %s", sys.version.split()[0])

@@ -93,7 +93,7 @@ and destination writability.
 `cd DIR` (remote), `lcd DIR` (local), `ls`, `ll` (long listing with
 permissions), `select PATTERN` (glob; matches files and directories),
 `deselect PATTERN` (inverse: clears matching selection marks and removes
-matching queued jobs; running jobs are kept), `queue`, `download`,
+matching queued jobs; running jobs are kept), `queue`, `download`, `version`,
 `verify [PATTERN]` (checksum-compare the selected remote files against the
 local copies; reads both but transfers nothing), `doctor`, `mkdir NAME`
 (local), `clear`, `quit`. The `:` prompt keeps arrow-up/down history.

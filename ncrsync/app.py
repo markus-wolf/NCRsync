@@ -35,6 +35,7 @@ from .transfer.progress_parser import Progress
 from .transfer.rsync_caps import RsyncCaps, compute_caps, parse_rsync_version
 from .transfer.transfer_manager import TransferManager, TransferSettings
 from .ui.command_input import CommandInput
+from .version import resolve as resolve_version
 from .ui.panes import FilePane, QueuePane
 from .ui.themes import NC_BLUE
 
@@ -93,6 +94,9 @@ class NCRsync(App):
         self._foreign_queue = False
         # suppress the misleading provisional tier until detect_caps() finishes
         self._caps_ready = False
+        # what is actually running: resolved once, never per render - the
+        # header repaints at 10 Hz while the spinner turns
+        self.version = resolve_version()
         # spinner state; the timer is created on mount and stays paused when idle
         self._busy = False
         self._spin_i = 0
@@ -140,7 +144,7 @@ class NCRsync(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        setup_logging(self.target.host, sys.argv)
+        setup_logging(self.target.host, sys.argv, self.version.long())
         self.register_theme(NC_BLUE)
         wanted = self.config.ui.get("theme")
         if wanted:
@@ -172,7 +176,7 @@ class NCRsync(App):
             self.local.cwd = local
 
     def _update_title(self) -> None:
-        self.title = "NCRsync"
+        self.title = f"NCRsync {self.version.short()}"
         # spinner leads the line: sub_title truncates from the tail on narrow
         # terminals, so a trailing spinner could vanish behind long paths
         spin = f"{SPINNER_FRAMES[self._spin_i]} " if self._busy else ""
@@ -510,6 +514,8 @@ class NCRsync(App):
             self.run_doctor_worker()
         elif cmd == "verify":
             self.verify_worker(arg or "")
+        elif cmd == "version":
+            self.log_raw(f"NCRsync {self.version.long()}")
         elif cmd == "clear":
             self.query_one("#log", RichLog).clear()
         elif cmd in ("quit", "exit", "q"):

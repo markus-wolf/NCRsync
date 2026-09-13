@@ -12,6 +12,7 @@ from typing import Callable
 
 from ..model.connection_profile import SshTarget
 from ..transfer.rsync_caps import compute_caps, parse_rsync_version
+from ..version import resolve as resolve_version
 
 Report = Callable[[str], None]
 
@@ -32,6 +33,7 @@ async def _run(argv: list[str]) -> tuple[int, str]:
 async def run_doctor(target: SshTarget, rsync_bin: str, local_dest: Path,
                      report: Report) -> None:
     report("doctor: running checks...")
+    report(f"  ncrsync:      {resolve_version().long()}")
 
     # local rsync
     rc, out = await _run([rsync_bin, "--version"])

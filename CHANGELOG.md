@@ -24,6 +24,18 @@ users until unit 2 lands.
 - `queue.json` is version 2: per-job `direction`, and `local_dest` renamed to
   `local_path`. Version 1 files load unchanged as downloads.
 
+Version reporting.
+
+- The header now names what is actually running, not just the last release:
+  `NCRsync 0.5.0` on a released build, `0.5.0+1` one commit past the tag,
+  a trailing `*` for uncommitted changes. Resolved once at startup from
+  `git describe`, cached, and never recomputed per render.
+- `doctor` and the session log carry the full build string, so a log from last
+  week identifies the code that produced it.
+- New `version` command prints the full string on demand.
+- An installed copy (`uv tool install`, `uvx`) has no repository to consult and
+  shows the plain release, which is correct — a wheel is the release.
+
 ## 0.5.0 — 2026-09-13
 
 ### Fixed
