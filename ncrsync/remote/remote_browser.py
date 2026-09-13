@@ -29,6 +29,20 @@ class RemoteBrowser:
         self.cwd = posixpath.normpath(posixpath.join(self.cwd, ".."))
         return self.cwd
 
+    async def mkdir(self, name: str) -> str:
+        """Create a directory on the remote side, relative to the cwd.
+
+        ``-p`` makes an existing directory a no-op rather than an error, and
+        ``--`` stops a name beginning with a dash being read as an option.
+        """
+        path = self.resolve(name)
+        cmd = f"mkdir -p -- {shlex.quote(path)}"
+        log.info("$ %s", ssh_command_repr(self.target, cmd))
+        rc, _out, err = await run_ssh(self.target, cmd)
+        if rc != 0:
+            raise SshError(f"remote mkdir failed (rc={rc}): {err.strip()}")
+        return path
+
     async def stat_many(self, paths: list[str]) -> dict[str, DestInfo]:
         """Size and allocated blocks for several remote paths in one round trip.
 

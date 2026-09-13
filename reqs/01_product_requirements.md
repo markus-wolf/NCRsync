@@ -4,9 +4,13 @@
 
 NCRsync shall provide a terminal UI for browsing local and remote filesystems and downloading files from remote hosts using rsync.
 
+*Amended in 0.6.0:* NCRsync also uploads — copies files from the local system to the remote host. Direction is chosen per item by the pane it is selected in. See §3.10.
+
 ## 2. Non-goals for v1
 
 NCRsync v1 shall not attempt to be a general backup system, bidirectional sync engine, cloud file manager, full Midnight Commander replacement, Windows-first application, or daemon/server application.
+
+Uploads (§3.10) do not contradict the sync non-goal: each transfer is an explicit one-way copy of items the user selected. NCRsync never reconciles two trees, propagates deletions, or decides on its own which side is newer.
 
 ## 3. Required v1 Features
 
@@ -65,6 +69,18 @@ The program shall log session information, remote commands, queue operations, rs
 ### 3.9 Diagnostics
 
 The program shall provide a `doctor` command that checks local rsync version, remote rsync version, SSH connectivity, local destination writability, support for `--append-verify`, and support for `-s` / `--protect-args`.
+
+*Amended in 0.6.0:* `doctor` also reports remote directory writability and free space on both sides, since uploads write to the remote host.
+
+### 3.10 Uploads (added in 0.6.0)
+
+The user shall be able to copy files and directories from the local system to the remote host.
+
+- Direction is decided when an item is queued, from the pane it was selected in: the remote pane queues a download into the local directory, the local pane queues an upload into the remote directory. One queue may hold both.
+- Selection (Space, Enter, `select`, `deselect`) works in both panes, independently.
+- The resume and path-safety rules of §3.7 apply unchanged, with the remote end taking the role of destination. Append-resume is used only onto a partial NCRsync itself wrote.
+- An upload that would replace a file already on the remote host requires confirmation (Overwrite / Skip / Cancel), unless disabled by `transfer.confirm_overwrite = false`. Downloads are not prompted.
+- `mkdir` creates the directory on whichever side the source pane represents.
 
 ## 4. Success Criteria
 

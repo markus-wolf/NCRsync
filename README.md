@@ -8,7 +8,8 @@ NCRsync is not just an rsync wrapper. It is a keyboard-first, dual-pane TUI wher
 
 - Dual-pane remote and local file browsing
 - SSH remote access (no server-side agent required)
-- Rsync transfer queue with resumable downloads (files and whole directories)
+- Rsync transfer queue with resumable transfers in both directions — downloads
+  and uploads, files and whole directories, mixed freely in one queue
 - Cancel (F7) keeps the partial file; transient network failures retry
   automatically with backoff and resume where they left off
 - rsync capability auto-detection: resume/path-safety/progress flags are chosen
@@ -70,7 +71,7 @@ the venv activated (`source .venv/bin/activate`), plain `ncrsync TARGET` and
 Inside the app, type commands at the `:` prompt or use the function keys shown
 in the footer. Run `doctor` after the first connect: it verifies SSH
 connectivity, local/remote rsync versions (and the resulting capability tier),
-and destination writability.
+and writability and free space on both sides.
 
 ### Keys
 
@@ -78,25 +79,29 @@ and destination writability.
 |---|---|
 | Tab | Switch between remote and local pane |
 | Shift+Tab | Cycle focus (panes, queue, command line) |
-| Enter | Enter directory / toggle selection on a remote file |
-| Space | Toggle selection (remote pane) |
+| Enter | Enter directory / toggle selection on a file (either pane) |
+| Space | Toggle selection (either pane) |
 | Backspace | Parent directory (focused pane) |
 | Ctrl+R | Refresh focused pane |
-| F5 | Start downloading the queue |
-| F6 | Queue selected items (files and directories) |
+| F5 | Run the queue |
+| F6 | Queue the selection toward the other pane — a download from the remote pane, an upload from the local pane |
 | F7 | Cancel the running transfer (partial file kept) |
 | F8 | Remove queued item (focus the queue first; running jobs must be cancelled) |
 | F10 | Quit |
 
 ### Commands
 
+Commands that act on a pane use the focused pane, or the one last focused if
+you are typing at the prompt.
+
 `cd DIR` (remote), `lcd DIR` (local), `ls`, `ll` (long listing with
 permissions), `select PATTERN` (glob; matches files and directories),
 `deselect PATTERN` (inverse: clears matching selection marks and removes
-matching queued jobs; running jobs are kept), `queue`, `download`, `version`,
-`verify [PATTERN]` (checksum-compare the selected remote files against the
-local copies; reads both but transfers nothing), `doctor`, `mkdir NAME`
-(local), `clear`, `quit`. The `:` prompt keeps arrow-up/down history.
+matching queued jobs; running jobs are kept), `queue`, `download` (runs the
+queue, both directions), `verify [PATTERN]` (checksum-compare the selected
+files against their copies on the other side; reads both but transfers
+nothing), `mkdir NAME` (on whichever side the pane represents), `doctor`,
+`version`, `clear`, `quit`. The `:` prompt keeps arrow-up/down history.
 
 ## Transfers
 
@@ -109,6 +114,22 @@ effective rsync version, `min(local, remote)`:
 | >= 3.2 | `-s` | `--append` | `--info=progress2` |
 | 3.0 – 3.1 | `-s` | `--append-verify` | 3.1: `progress2`, 3.0: `--progress` |
 | < 3.0 (degraded) | quoted paths + warning | `--partial` only | `--progress` |
+
+### Uploads
+
+Select files or directories in the **local** pane and press F6: they are
+queued as uploads into the remote pane's current directory, shown with `↑` in
+the queue (downloads show `↓`). F5 runs everything queued, in either
+direction.
+
+Before sending, NCRsync checks which upload destinations already exist on the
+server — one SSH round trip for the whole queue. If any would be replaced it
+asks: **Overwrite**, **Skip those** (upload the rest), or **Cancel**. Skip is
+the default focus and Escape cancels, so a stray keypress does no damage.
+Downloads are never prompted.
+
+Uploads follow the same resume rules as downloads: append-resume only onto a
+partial NCRsync wrote itself, content comparison otherwise.
 
 ### Resuming safely
 
@@ -156,6 +177,7 @@ partial = true
 protect_args = true      # set false to force legacy path quoting (no -s)
 checksum_existing = true # compare by content when a file of unknown origin
                          # is already at the destination
+confirm_overwrite = true # ask before an upload replaces a file on the server
 timeout = 120
 bwlimit = 0              # KiB/s, 0 = unlimited
 continue_on_error = false

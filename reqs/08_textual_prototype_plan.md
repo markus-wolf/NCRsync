@@ -99,3 +99,5 @@ Always show the actual argv in the log pane.
 ## 10. Avoid Premature Complexity
 
 Do not implement initially: mouse, uploads, remote delete, multiple hosts, plugins, detached transfer daemon. Get the download path correct first.
+
+*Historical note:* this constrained the prototype. Uploads were added later, in 0.6.0, once the download path and resume policy were proven. Remote delete remains out of scope.

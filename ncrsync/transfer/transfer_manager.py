@@ -131,13 +131,41 @@ class TransferManager:
         return [j for j in self.jobs if j.status in (JobStatus.QUEUED, JobStatus.FAILED)]
 
     # -- execution --
-    async def run_queue(self) -> None:
+    async def probe_uploads(self, jobs: list[TransferJob]) -> list[TransferJob]:
+        """Probe upload destinations and return the jobs that would overwrite.
+
+        Fills the same cache run_queue uses, so a caller that probes first to
+        ask about overwrites can then run with ``probe=False`` and pay for one
+        SSH round trip, not two. A destination that could not be inspected is
+        not reported: we do not know it exists, and the resume policy already
+        refuses to append onto it.
+        """
+        await self._prefetch_remote_dests(jobs)
+        return [
+            j for j in jobs
+            if j.direction is Direction.UPLOAD and self._dest_info(j).exists
+        ]
+
+    def skip_jobs(self, jobs: list[TransferJob], reason: str) -> None:
+        for j in jobs:
+            if j.status is not JobStatus.RUNNING:
+                j.status = JobStatus.SKIPPED
+                j.last_error = reason
+        if jobs:
+            self._on_status()
+
+    async def run_queue(self, *, probe: bool = True) -> None:
+        """Run pending jobs in order.
+
+        ``probe=False`` reuses destinations already fetched by probe_uploads.
+        """
         self._stopping = False
         pending = self.pending
         if not pending:
             self._on_line("[queue empty - nothing to transfer]")
             return
-        await self._prefetch_remote_dests(pending)
+        if probe:
+            await self._prefetch_remote_dests(pending)
         self._on_line(f"[starting {len(pending)} job(s)]")
         for job in pending:
             if self._stopping:
@@ -267,18 +295,26 @@ class TransferManager:
                 self._on_progress(job, prog)
         return sink
 
-    async def verify(self, remote_path: str, name: str, local_dest: str) -> Optional[bool]:
-        """Compare a remote file against the local copy by checksum.
+    async def verify(self, remote_path: str, name: str, local_path: str,
+                     direction: Direction = Direction.DOWNLOAD) -> Optional[bool]:
+        """Compare the two copies of a file by checksum.
 
-        Returns True if they match, False if they differ, None if rsync failed.
-        Reads both copies in full but sends only checksums; nothing is written.
+        For a download ``remote_path`` is the file and ``local_path`` the local
+        directory; for an upload it is the reverse. Returns True if the copies
+        match, False if they differ (or the far copy is missing), None if rsync
+        failed. Reads both copies in full but sends only checksums; nothing is
+        written.
         """
-        dest = Path(local_dest) / name.rstrip("/")
-        if not dest.exists():
-            self._on_line(f"[verify] {name}: no local copy")
-            return False
+        if direction is Direction.DOWNLOAD:
+            dest = Path(local_path) / name.rstrip("/")
+            if not dest.exists():
+                self._on_line(f"[verify] {name}: no local copy")
+                return False
+        # an upload's far copy is remote and costs a round trip to check;
+        # rsync's dry run reports a missing destination as a difference anyway
         argv = build_rsync_argv(
-            self.target, remote_path, local_dest, self.caps,
+            self.target, remote_path, local_path, self.caps,
+            direction=direction,
             rsync_bin=self.settings.rsync_bin,
             keepalive_opts=self.settings.keepalive_opts,
             timeout=self.settings.timeout,
@@ -302,7 +338,8 @@ class TransferManager:
             return None
         match = not changed
         self._on_line(
-            f"[verify] {name}: {'matches the remote copy' if match else 'DIFFERS from the remote copy'}"
+            f"[verify] {name}: local and remote copies "
+            f"{'match' if match else 'DIFFER'}"
         )
         return match
 

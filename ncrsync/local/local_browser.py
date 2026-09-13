@@ -27,7 +27,11 @@ def list_local(local_cwd: Path, show_hidden: bool = True) -> list[FileEntry]:
         entries.append(
             FileEntry(
                 name=child.name,
-                path=str(child.resolve()),
+                # the path as listed, not resolve(): two symlinks to one target
+                # would otherwise share a row key and crash the table, and a
+                # queued symlink would hand rsync a source whose basename
+                # differs from the name the resume policy inspects
+                path=str(child.absolute()),
                 kind=kind,
                 size=st.st_size if kind == "file" else None,
                 mtime=datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),

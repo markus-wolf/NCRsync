@@ -49,3 +49,5 @@ Features: `pyproject.toml`, CLI entrypoint `ncrsync`, pipx install, tests, READM
 ## Phase 7 - Advanced
 
 Potential features: SFTP browsing backend, upload support, checksumming, multi-host bookmarks, search, tmux-friendly detached transfer mode, desktop notifications.
+
+*Delivered:* upload support (0.6.0, see `01_product_requirements.md` §3.10); checksumming as the `verify` command (0.5.0).

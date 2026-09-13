@@ -2,39 +2,53 @@
 
 ## Unreleased
 
-Upload engine (design unit 1). The transfer layer can now move files in either
-direction; **nothing in the UI reaches it yet**, so behaviour is unchanged for
-users until unit 2 lands.
+### Added
 
-- `TransferJob` carries a `direction`, and names its two endpoints
-  `remote_path` / `local_path`. The source side holds the item's full path, the
-  destination side the directory it lands in, and which is which follows the
-  direction.
-- `build_rsync_argv` formats the `host:path` end wherever it sits. The two path
-  rules now follow the remote side rather than the source position: raw under
-  `-s`, quoted in the `< 3.0` degraded mode.
-- Upload destinations are probed over SSH in a single batched `find` per queue
-  run, not one call per job, and feed the existing resume policy unchanged.
-- `DestInfo` gains `known`. A destination that could not be inspected — an
-  unreachable host, or one without GNU find — is no longer indistinguishable
-  from an empty one, and is never appended to. This closed two real defects
-  caught by the new tests.
-- Queue dedupe keys on direction, so uploading and downloading the same path
-  are separate jobs.
+- **Uploads.** Select files or directories in the local pane and press F6 to
+  queue them into the remote pane's current directory. Direction is decided
+  when an item is queued, from the pane it was selected in, so one queue can
+  hold downloads and uploads together; F5 runs both. The queue marks each job
+  `↓` or `↑`.
+- **Overwrite confirmation for uploads.** Before sending, every upload
+  destination is checked in one SSH round trip. If any would replace a file on
+  the server: Overwrite / Skip those / Cancel. Skip holds the default focus and
+  Escape cancels, so an unread prompt does no damage. Disable with
+  `transfer.confirm_overwrite = false`. Downloads are never prompted.
+- **Selection in both panes.** Space, Enter, `select` and `deselect` work in
+  the local pane as well, independently of the remote pane.
+- `mkdir` creates the directory on whichever side the pane represents;
+  `verify` compares against the other side in either direction.
+- `doctor` reports remote directory writability and free space on both sides.
+- The header names what is actually running: `0.5.0` on a released build,
+  `0.5.0+1` one commit past the tag, `*` for uncommitted changes. `doctor`, the
+  session log and a new `version` command carry the full build string.
+
+### Fixed
+
+- **Two symlinks to the same target crashed the local pane** with a duplicate
+  row key. Entries were keyed on their resolved path; they now keep the path
+  as listed. This also fixes a symlink queued for upload: rsync names the
+  destination after the source basename, and the resolved target's name
+  differed from the link's, so the resume policy would have inspected a
+  different file from the one written.
+- **A destination that could not be inspected read as empty**, both when no
+  remote probe was available and when it failed — permitting append-resume
+  onto an unknown remote file. It now counts as unknown and is never appended
+  to. The remote probe also confirms GNU `find` is present before trusting an
+  empty result.
+
+### Changed
+
+- F5's label is "Transfer"; it runs the whole queue regardless of direction.
+- Commands typed at the prompt act on the pane last focused, since typing
+  moves focus to the prompt. Keyboard actions still follow true focus.
 - `queue.json` is version 2: per-job `direction`, and `local_dest` renamed to
-  `local_path`. Version 1 files load unchanged as downloads.
-
-Version reporting.
-
-- The header now names what is actually running, not just the last release:
-  `NCRsync 0.5.0` on a released build, `0.5.0+1` one commit past the tag,
-  a trailing `*` for uncommitted changes. Resolved once at startup from
-  `git describe`, cached, and never recomputed per render.
-- `doctor` and the session log carry the full build string, so a log from last
-  week identifies the code that produced it.
-- New `version` command prints the full string on demand.
-- An installed copy (`uv tool install`, `uvx`) has no repository to consult and
-  shows the plain release, which is correct — a wheel is the release.
+  `local_path`. Version 1 files load unchanged, as downloads.
+- The transfer layer formats the `host:path` end wherever it sits, so the path
+  rules follow the remote side rather than the source position: raw under
+  `-s`, quoted in the `< 3.0` degraded mode.
+- Product requirements amended: uploads added as §3.10 of
+  `reqs/01_product_requirements.md`. Bidirectional *sync* remains a non-goal.
 
 ## 0.5.0 — 2026-09-13
 

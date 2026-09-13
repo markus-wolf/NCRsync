@@ -47,17 +47,18 @@ class FilePane(DataTable):
 
 
 class QueuePane(DataTable):
-    """The transfer queue table."""
+    """The transfer queue table. The first column shows direction:
+    a down arrow for a download, an up arrow for an upload."""
 
     def on_mount(self) -> None:
         self.cursor_type = "row"
         self.zebra_stripes = True
-        self.add_columns("status", "file", "info")
+        self.add_columns("", "status", "file", "info")
 
-    def populate(self, rows: list[tuple[str, str, str]]) -> None:
+    def populate(self, rows: list[tuple[str, str, str, str]]) -> None:
         prev = self.cursor_row
         self.clear()
-        for status, name, info in rows:
-            self.add_row(status, Text(name), Text(info))
+        for arrow, status, name, info in rows:
+            self.add_row(arrow, status, Text(name), Text(info))
         if rows:
             self.move_cursor(row=min(prev or 0, len(rows) - 1))

@@ -2,6 +2,11 @@
 
 Per doc-03 §1 the UI holds NO SSH/rsync command construction - it delegates to
 the remote/ and transfer/ modules and reacts to their callbacks.
+
+Transfers run in either direction. The direction of a queued job is decided
+when it is queued, from the pane the items were selected in: the remote pane
+queues downloads into the local directory, the local pane queues uploads into
+the remote directory. F5 then runs whatever is in the queue.
 """
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from pathlib import Path
 
 from rich.markup import escape
 from rich.text import Text
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -24,28 +29,31 @@ from .diagnostics.doctor import run_doctor
 from .local.local_browser import LocalBrowser
 from .logging_setup import setup_logging
 from .model.connection_profile import SshTarget
-from .model.file_entry import human_size
-from .model.transfer_job import JobStatus, TransferJob
+from .model.file_entry import FileEntry, human_size
+from .model.transfer_job import Direction, JobStatus, TransferJob
 from .remote.remote_browser import RemoteBrowser
 from .remote.ssh_client import SshError
-from .screens import RecoveryScreen
+from .screens import OverwriteScreen, RecoveryScreen
 from .state.queue_store import QueueStore
 from .state.state_store import StateStore
 from .transfer.progress_parser import Progress
 from .transfer.rsync_caps import RsyncCaps, compute_caps, parse_rsync_version
 from .transfer.transfer_manager import TransferManager, TransferSettings
 from .ui.command_input import CommandInput
-from .version import resolve as resolve_version
 from .ui.panes import FilePane, QueuePane
 from .ui.themes import NC_BLUE
+from .version import resolve as resolve_version
 
 log = logging.getLogger("ncrsync")
 
 # waiting indicator for admin (SSH round-trip) operations
 SPINNER_FRAMES = "/-\\|"
 # worker groups that drive the spinner; "transfer" is excluded on purpose -
-# downloads have their own progress display in the status bar
+# transfers have their own progress display in the status bar
 BUSY_GROUPS = frozenset({"remote", "caps", "doctor"})
+
+PANES = ("remote", "local")
+ARROW = {Direction.DOWNLOAD: "↓", Direction.UPLOAD: "↑"}
 
 
 class NCRsync(App):
@@ -64,7 +72,7 @@ class NCRsync(App):
         # priority=True: otherwise Textual's built-in focus_next swallows Tab
         # and the footer's "Switch" label would lie. Shift+Tab still cycles focus.
         Binding("tab", "switch_pane", "Switch", priority=True),
-        ("f5", "download", "Download"),
+        ("f5", "download", "Transfer"),
         ("f6", "queue", "Queue"),
         ("f7", "cancel", "Cancel"),
         ("f8", "remove", "Remove"),
@@ -89,13 +97,16 @@ class NCRsync(App):
 
         self.state = StateStore(base=state_dir)
         self.queue_store = QueueStore(base=state_dir)
-        self.remote_selected: set[str] = set()
+        #: marked entries per pane, by absolute path (doc-05 §7)
+        self.selected: dict[str, set[str]] = {p: set() for p in PANES}
+        #: the file pane most recently focused. Commands typed at the prompt
+        #: move focus to the input, so they act on this pane instead.
+        self._last_pane = "remote"
         # queue.json on disk belongs to a different host and must not be clobbered
         self._foreign_queue = False
         # suppress the misleading provisional tier until detect_caps() finishes
         self._caps_ready = False
-        # what is actually running: resolved once, never per render - the
-        # header repaints at 10 Hz while the spinner turns
+        # what is actually running: resolved once at startup, then read from here
         self.version = resolve_version()
         # spinner state; the timer is created on mount and stays paused when idle
         self._busy = False
@@ -105,6 +116,14 @@ class NCRsync(App):
         # provisional caps from local rsync only; refined by _detect_caps()
         self.caps: RsyncCaps = compute_caps((0, 0, 0), None)
         self.manager = self._build_manager(self.caps)
+
+    @property
+    def remote_selected(self) -> set[str]:
+        return self.selected["remote"]
+
+    @property
+    def local_selected(self) -> set[str]:
+        return self.selected["local"]
 
     def _build_manager(self, caps: RsyncCaps) -> TransferManager:
         t = self.config.transfer
@@ -138,7 +157,8 @@ class NCRsync(App):
         yield Static("", id="status")
         yield RichLog(id="log", highlight=True, markup=True, wrap=False)
         yield CommandInput(
-            placeholder=": command (cd, lcd, ls, ll, select, deselect, queue, download, verify, doctor, mkdir, clear, quit)",
+            placeholder=": command (cd, lcd, ls, ll, select, deselect, queue, download, "
+                        "verify, mkdir, doctor, version, clear, quit)",
             id="command",
         )
         yield Footer()
@@ -266,13 +286,36 @@ class NCRsync(App):
                 self.log_line("[green]resuming previous queue[/]")
                 self.download()
             else:
-                self.log_line("[cyan]previous queue loaded (press F5 to download)[/]")
+                self.log_line("[cyan]previous queue loaded (press F5 to transfer)[/]")
 
         self.push_screen(RecoveryScreen(jobs, data.get("remote_cwd", "")), handle)
 
-    # -- rendering --
+    # -- panes and selection --
     def _focused_id(self) -> str | None:
         return self.focused.id if self.focused is not None else None
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        wid = getattr(event.widget, "id", None)
+        if wid in PANES:
+            self._last_pane = wid
+
+    def _source_pane(self) -> str:
+        """The pane an action applies to: the focused one, or, when focus is
+        on the command prompt or the queue, the pane last focused."""
+        fid = self._focused_id()
+        return fid if fid in PANES else self._last_pane
+
+    def _pane(self, pane_id: str) -> FilePane:
+        return self.query_one(f"#{pane_id}", FilePane)
+
+    def _repaint(self, pane_id: str) -> None:
+        pane = self._pane(pane_id)
+        pane.populate(pane.entries, self.selected[pane_id])
+
+    def _toggle_selection(self, pane_id: str, e: FileEntry) -> None:
+        sel = self.selected[pane_id]
+        sel.discard(e.path) if e.path in sel else sel.add(e.path)
+        self._repaint(pane_id)
 
     def _set_status(self, progress: str = "") -> None:
         """Status bar: 'rsync tier: X | <progress>'. Text() sidesteps markup."""
@@ -284,10 +327,10 @@ class NCRsync(App):
         self.query_one("#status", Static).update(Text("  |  ".join(parts)))
 
     def _sync_queue(self) -> None:
-        rows = []
-        for j in self.manager.jobs:
-            info = j.last_error or ""
-            rows.append((j.status.value, j.name, info))
+        rows = [
+            (ARROW[j.direction], j.status.value, j.name, j.last_error or "")
+            for j in self.manager.jobs
+        ]
         self.query_one("#queue", QueuePane).populate(rows)
         self._persist_queue()
         # clear stale progress once nothing is running
@@ -305,7 +348,7 @@ class NCRsync(App):
         )
 
     def _on_progress(self, job: TransferJob, prog: Progress) -> None:
-        self._set_status(f"{job.name}  {prog.as_status()}")
+        self._set_status(f"{ARROW[job.direction]} {job.name}  {prog.as_status()}")
 
     # -- remote / local listing --
     @work(exclusive=True, group="remote")
@@ -315,7 +358,7 @@ class NCRsync(App):
         except SshError as exc:
             self.log_line(f"[red]{escape(str(exc))}[/]")
             return
-        self.query_one("#remote", FilePane).populate(entries, self.remote_selected)
+        self._pane("remote").populate(entries, self.selected["remote"])
         self.log_line(f"[green]remote[/] {escape(self.remote.cwd)}: {len(entries)} entries")
 
     def refresh_local(self) -> None:
@@ -324,15 +367,26 @@ class NCRsync(App):
         except OSError as exc:
             self.log_line(f"[red]local list failed:[/] {exc}")
             return
-        self.query_one("#local", FilePane).populate(entries, set())
+        self._pane("local").populate(entries, self.selected["local"])
         self._update_title()
+
+    def _enter_remote(self, path: str) -> None:
+        self.remote.set_cwd(path)
+        self.selected["remote"].clear()   # marks are per directory listing
+        self._update_title()
+        self.refresh_remote()
+
+    def _enter_local(self, path: Path) -> None:
+        self.local.cwd = path
+        self.selected["local"].clear()
+        self.refresh_local()
 
     # -- actions --
     # every pane-sensitive action derives the target from the actually focused
     # widget; a shadow "active pane" variable goes stale for other widgets
     def action_switch_pane(self) -> None:
         nxt = "local" if self._focused_id() == "remote" else "remote"
-        self.query_one(f"#{nxt}", FilePane).focus()
+        self._pane(nxt).focus()
 
     def action_refresh(self) -> None:
         fid = self._focused_id()
@@ -341,67 +395,72 @@ class NCRsync(App):
         if fid != "remote":
             self.refresh_local()
 
-    def _toggle_remote_selection(self, e) -> None:
-        self.remote_selected.discard(e.path) if e.path in self.remote_selected else self.remote_selected.add(e.path)
-        pane = self.query_one("#remote", FilePane)
-        pane.populate(pane.entries, self.remote_selected)
-
     def action_toggle_select(self) -> None:
-        if self._focused_id() != "remote":
+        fid = self._focused_id()
+        if fid not in PANES:
             return
-        e = self.query_one("#remote", FilePane).entry_at_cursor()
+        e = self._pane(fid).entry_at_cursor()
         if e is not None:
-            self._toggle_remote_selection(e)
+            self._toggle_selection(fid, e)
 
     def action_parent_dir(self) -> None:
         fid = self._focused_id()
         if fid == "remote":
             self.remote.parent()
-            self.remote_selected.clear()
-            self._update_title()
-            self.refresh_remote()
+            self._enter_remote(self.remote.cwd)
         elif fid == "local":
-            self.local.parent()
-            self.refresh_local()
+            self._enter_local(self.local.cwd.parent)
 
     def on_data_table_row_selected(self, event) -> None:
         pane_id = event.data_table.id
-        if pane_id not in ("remote", "local"):
+        if pane_id not in PANES:
             return
-        pane = self.query_one(f"#{pane_id}", FilePane)
-        e = pane.entry_at_cursor()
+        e = self._pane(pane_id).entry_at_cursor()
         if e is None:
             return
         if e.kind == "dir":
             if pane_id == "remote":
-                self.remote.set_cwd(e.path)
-                self.remote_selected.clear()
-                self._update_title()
-                self.refresh_remote()
+                self._enter_remote(e.path)
             else:
-                self.local.cwd = Path(e.path)
-                self.refresh_local()
-        elif pane_id == "remote" and e.kind == "file":
-            # Enter on a remote file toggles selection (doc-01 §3.5)
-            self._toggle_remote_selection(e)
+                self._enter_local(Path(e.path))
+        elif e.kind == "file":
+            # Enter on a file toggles its selection (doc-01 §3.5)
+            self._toggle_selection(pane_id, e)
 
     def action_queue(self) -> None:
-        pane = self.query_one("#remote", FilePane)
-        paths = set(self.remote_selected)
+        """Queue the selection (or cursor entry) toward the other pane.
+
+        From the remote pane that is a download into the local directory; from
+        the local pane, an upload into the remote directory.
+        """
+        src = self._source_pane()
+        pane = self._pane(src)
+        direction = Direction.DOWNLOAD if src == "remote" else Direction.UPLOAD
+        sel = self.selected[src]
+        paths = set(sel)
         if not paths:
             e = pane.entry_at_cursor()
             if e and e.kind in ("file", "dir"):
                 paths = {e.path}
         added = 0
         for e in pane.entries:
-            if e.path in paths and e.kind in ("file", "dir"):
-                # directories transfer recursively via rsync -a
-                name = e.name + "/" if e.kind == "dir" else e.name
-                if self.manager.add(e.path, name, str(self.local.cwd)):
-                    added += 1
-        self.remote_selected.clear()
-        pane.populate(pane.entries, self.remote_selected)
-        self.log_line(f"[green]queued[/] {added} item(s); queue size {len(self.manager.jobs)}")
+            if e.path not in paths or e.kind not in ("file", "dir"):
+                continue
+            # directories transfer recursively via rsync -a
+            name = e.name + "/" if e.kind == "dir" else e.name
+            if direction is Direction.DOWNLOAD:
+                ok = self.manager.add(e.path, name, str(self.local.cwd), direction)
+            else:
+                ok = self.manager.add(self.remote.cwd, name, e.path, direction)
+            added += ok
+        sel.clear()
+        self._repaint(src)
+        verb = "download" if direction is Direction.DOWNLOAD else "upload"
+        dest = self.local.cwd if direction is Direction.DOWNLOAD else self.remote.cwd
+        self.log_line(
+            f"[green]queued[/] {added} item(s) for {verb} to {escape(str(dest))}; "
+            f"queue size {len(self.manager.jobs)}"
+        )
 
     def action_remove(self) -> None:
         if self._focused_id() != "queue":
@@ -423,6 +482,22 @@ class NCRsync(App):
 
     @work(exclusive=True, group="transfer")
     async def download(self) -> None:
+        """Run the queue, asking first if uploads would replace remote files."""
+        pending = self.manager.pending
+        uploads = [j for j in pending if j.direction is Direction.UPLOAD]
+        if uploads and self.config.transfer.get("confirm_overwrite", True):
+            # one probe serves both this question and the resume decisions
+            clashes = await self.manager.probe_uploads(pending)
+            if clashes:
+                choice = await self.push_screen_wait(OverwriteScreen(clashes))
+                if choice == "cancel":
+                    self.log_line("[yellow]transfer cancelled[/] - nothing was sent")
+                    return
+                if choice == "skip":
+                    self.manager.skip_jobs(clashes, "skipped: already on the server")
+                    self.log_line(f"[yellow]skipped[/] {len(clashes)} upload(s) that would overwrite")
+            await self.manager.run_queue(probe=False)
+            return
         await self.manager.run_queue()
 
     def action_cancel(self) -> None:
@@ -435,31 +510,56 @@ class NCRsync(App):
 
     @work(exclusive=True, group="transfer")
     async def verify_worker(self, pattern: str) -> None:
-        """Checksum-compare remote files against the local copies.
+        """Checksum-compare the two copies of the selected files.
 
-        Targets the remote selection, or the pattern if one is given, or the
-        cursor entry. Reads both copies but transfers nothing.
+        Acts on the source pane's selection, or the pattern if given, or the
+        cursor entry. From the remote pane the other copy is local; from the
+        local pane it is on the server. Reads both, transfers nothing.
         """
-        pane = self.query_one("#remote", FilePane)
+        src = self._source_pane()
+        pane = self._pane(src)
         if pattern:
             targets = [e for e in pane.entries
                        if e.kind == "file" and fnmatch.fnmatch(e.name, pattern)]
-        elif self.remote_selected:
-            targets = [e for e in pane.entries if e.path in self.remote_selected]
+        elif self.selected[src]:
+            targets = [e for e in pane.entries if e.path in self.selected[src]]
         else:
             cur = pane.entry_at_cursor()
             targets = [cur] if cur and cur.kind == "file" else []
         targets = [e for e in targets if e.kind == "file"]
         if not targets:
-            self.log_line("[dim]verify: select a remote file, or give a pattern[/]")
+            self.log_line("[dim]verify: select a file, or give a pattern[/]")
             return
         self.log_line(f"[bold]verifying[/] {len(targets)} file(s) by checksum - reads both copies")
         for e in targets:
-            await self.manager.verify(e.path, e.name, str(self.local.cwd))
+            if src == "remote":
+                await self.manager.verify(e.path, e.name, str(self.local.cwd),
+                                          Direction.DOWNLOAD)
+            else:
+                await self.manager.verify(self.remote.cwd, e.name, e.path,
+                                          Direction.UPLOAD)
 
     @work(exclusive=True, group="doctor")
     async def run_doctor_worker(self) -> None:
-        await run_doctor(self.target, self.config.rsync_bin, self.local.cwd, self.log_raw)
+        await run_doctor(self.target, self.config.rsync_bin, self.local.cwd,
+                         self.log_raw, remote_dir=self.remote.cwd)
+
+    @work(exclusive=True, group="remote")
+    async def remote_mkdir_worker(self, name: str) -> None:
+        try:
+            path = await self.remote.mkdir(name)
+        except SshError as exc:
+            self.log_line(f"[red]{escape(str(exc))}[/]")
+            return
+        self.log_line(f"[green]created[/] {escape(path)} on {escape(self.target.host)}")
+        # list again from the same worker; a second exclusive worker in this
+        # group would cancel this one
+        try:
+            entries = await self.remote.list_dir()
+        except SshError as exc:
+            self.log_line(f"[red]{escape(str(exc))}[/]")
+            return
+        self._pane("remote").populate(entries, self.selected["remote"])
 
     # -- command input --
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -477,14 +577,12 @@ class NCRsync(App):
             if not arg:
                 self.log_line("[dim]usage: cd REMOTE_DIR[/]")
                 return
-            self.remote.set_cwd(self.remote.resolve(arg))
-            self.remote_selected.clear()
-            self._update_title()
-            self.refresh_remote()
+            self._enter_remote(self.remote.resolve(arg))
         elif cmd == "lcd":
             if not arg:
                 self.log_line("[dim]usage: lcd LOCAL_DIR[/]")
             elif self.local.change_dir(arg):
+                self.selected["local"].clear()
                 self.refresh_local()
             else:
                 self.log_line(f"[red]not a directory:[/] {escape(arg)}")
@@ -497,15 +595,7 @@ class NCRsync(App):
         elif cmd == "deselect":
             self._cmd_deselect(arg or "*")
         elif cmd == "mkdir":
-            if not arg:
-                self.log_line("[dim]usage: mkdir LOCAL_DIR_NAME[/]")
-                return
-            try:
-                p = self.local.mkdir(arg)
-                self.refresh_local()
-                self.log_line(f"[green]created[/] {escape(str(p))}")
-            except OSError as exc:
-                self.log_line(f"[red]mkdir failed:[/] {escape(str(exc))}")
+            self._cmd_mkdir(arg)
         elif cmd == "queue":
             self.action_queue()
         elif cmd == "download":
@@ -523,10 +613,26 @@ class NCRsync(App):
         else:
             self.log_line(f"[red]unknown command:[/] {cmd}")
 
+    def _cmd_mkdir(self, name: str) -> None:
+        """mkdir: create a directory in whichever pane is the source pane."""
+        src = self._source_pane()
+        if not name:
+            self.log_line(f"[dim]usage: mkdir NAME  (creates it in the {src} pane)[/]")
+            return
+        if src == "remote":
+            self.remote_mkdir_worker(name)
+            return
+        try:
+            p = self.local.mkdir(name)
+            self.refresh_local()
+            self.log_line(f"[green]created[/] {escape(str(p))}")
+        except OSError as exc:
+            self.log_line(f"[red]mkdir failed:[/] {escape(str(exc))}")
+
     def _cmd_long_listing(self) -> None:
-        """ll: long listing of the focused pane (permissions, size, mtime)."""
-        pane_id = "local" if self._focused_id() == "local" else "remote"
-        pane = self.query_one(f"#{pane_id}", FilePane)
+        """ll: long listing of the source pane (permissions, size, mtime)."""
+        pane_id = self._source_pane()
+        pane = self._pane(pane_id)
         cwd = str(self.local.cwd) if pane_id == "local" else self.remote.cwd
         self.log_line(f"[bold]{pane_id}[/] {escape(cwd)}:")
         for e in pane.entries:
@@ -534,24 +640,27 @@ class NCRsync(App):
             self.log_raw(f"  {e.permissions or '-':<11} {size:>8}  {e.mtime or '':<19}  {e.name}")
 
     def _cmd_select(self, pattern: str) -> None:
-        pane = self.query_one("#remote", FilePane)
+        src = self._source_pane()
+        pane = self._pane(src)
         n = 0
         for e in pane.entries:
             if e.kind in ("file", "dir") and fnmatch.fnmatch(e.name, pattern):
-                self.remote_selected.add(e.path)
+                self.selected[src].add(e.path)
                 n += 1
-        pane.populate(pane.entries, self.remote_selected)
-        self.log_line(f"[green]selected[/] {n} item(s) matching {escape(repr(pattern))}")
+        self._repaint(src)
+        self.log_line(f"[green]selected[/] {n} item(s) in the {src} pane matching {escape(repr(pattern))}")
 
     def _cmd_deselect(self, pattern: str) -> None:
-        """Inverse of select: clear matching marks and drop matching queued jobs."""
-        pane = self.query_one("#remote", FilePane)
+        """Inverse of select: clear matching marks in the source pane and drop
+        matching queued jobs, in either direction."""
+        src = self._source_pane()
+        pane = self._pane(src)
         unmarked = 0
         for e in pane.entries:
-            if e.path in self.remote_selected and fnmatch.fnmatch(e.name, pattern):
-                self.remote_selected.discard(e.path)
+            if e.path in self.selected[src] and fnmatch.fnmatch(e.name, pattern):
+                self.selected[src].discard(e.path)
                 unmarked += 1
-        pane.populate(pane.entries, self.remote_selected)
+        self._repaint(src)
         removed = self.manager.remove_matching(pattern)
         self.log_line(
             f"[yellow]deselected[/] {unmarked} mark(s), removed {len(removed)} "

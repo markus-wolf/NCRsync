@@ -36,6 +36,8 @@ DEFAULTS: dict = {
         # when a file of unknown origin sits at the destination, compare by
         # content instead of trusting size+mtime (reads both copies)
         "checksum_existing": True,
+        # ask before an upload replaces a file already on the server
+        "confirm_overwrite": True,
         "bwlimit": 0,            # 0 = unlimited; KiB/s otherwise
         "continue_on_error": False,
         "max_retries": 3,
