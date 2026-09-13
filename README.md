@@ -159,3 +159,4 @@ uv run pytest
 ## Specifications
 
 Design documents, architecture notes, and the implementation roadmap are in [`reqs/`](reqs/README.md).
+Versioning and the release checklist are in [RELEASING.md](RELEASING.md).

@@ -1,9 +1,10 @@
 [project]
 name = "ncrsync"
-version = "0.4.0"
+dynamic = ["version"]          # single source of truth: ncrsync/__init__.py
 description = "Norton Commander-style terminal file manager for remote SSH hosts with resumable rsync downloads"
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
 authors = [{ name = "Markus Wolf" }]
 keywords = ["rsync", "ssh", "tui", "file-manager", "textual"]
 dependencies = [
@@ -11,6 +12,7 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/markus-wolf/NCRsync"
 Repository = "https://github.com/markus-wolf/NCRsync"
 
 [project.scripts]
@@ -23,12 +25,16 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11,<0.12"]
-build-backend = "uv_build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv.build-backend]
+[tool.setuptools.dynamic]
+version = { attr = "ncrsync.__version__" }
+
 # flat layout: the ncrsync/ package lives at the repo root, not under src/
-module-root = ""
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ncrsync*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

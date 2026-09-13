@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 — 2026-09-13
+
+- Versioning scheme aligned with the other projects here: `ncrsync/__init__.py`
+  is the single source of truth and `pyproject.toml` derives the version from
+  it, replacing the copy that was duplicated in both files. Documented in
+  [RELEASING.md](RELEASING.md) and enforced by `tests/test_version.py`.
+- Build backend switched from `uv_build` to setuptools, which is what makes the
+  dynamic version possible (`uv_build` requires a static one). `uv sync` and
+  `uv run` are unaffected.
+- Added `license` and `Homepage` metadata.
+
 ## 0.4.0 — 2026-07-05
 
 - Waiting indicator: a rotating `/-\|` spinner leads the header directory line
