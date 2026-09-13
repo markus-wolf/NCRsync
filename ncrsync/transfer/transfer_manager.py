@@ -11,13 +11,20 @@ import asyncio
 import fnmatch
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Optional
 
 from ..model.connection_profile import SshTarget
 from ..model.transfer_job import JobStatus, TransferJob
+from . import resume_policy
 from .progress_parser import Progress, parse_progress_line
 from .rsync_caps import RsyncCaps
-from .rsync_runner import TRANSIENT_EXIT_CODES, RsyncRunner, build_rsync_argv
+from .rsync_runner import (
+    TRANSIENT_EXIT_CODES,
+    RsyncRunner,
+    build_rsync_argv,
+    parse_xfr_count,
+)
 
 log = logging.getLogger("ncrsync")
 
@@ -30,6 +37,8 @@ class TransferSettings:
     bwlimit: int = 0
     append_verify_pref: bool = True
     protect_args_pref: bool = True
+    #: force a content comparison when the destination file's origin is not ours
+    checksum_existing: bool = True
     continue_on_error: bool = False
     max_retries: int = 3
     retry_delay_seconds: int = 5
@@ -52,6 +61,8 @@ class TransferManager:
         self.jobs: list[TransferJob] = []
         self._runner = RsyncRunner()
         self._stopping = False
+        #: files-transferred counter from the last run; 0 means rsync skipped
+        self._xfr_count: Optional[int] = None
         self._on_line = on_line
         self._on_status = on_status
         self._on_progress = on_progress
@@ -117,29 +128,63 @@ class TransferManager:
                 self._on_line("[stopping queue on failure - partial preserved]")
                 break
 
+    def dest_file(self, job: TransferJob) -> Path:
+        """Local path rsync will write for this job."""
+        return Path(job.local_dest) / job.name.rstrip("/")
+
+    def _resume_decision(self, job: TransferJob) -> resume_policy.ResumeDecision:
+        """Record the destination's origin on first run, then decide."""
+        info = resume_policy.inspect(self.dest_file(job))
+        if job.dest_preexisting is None and job.attempts == 0:
+            # first time we touch this destination: anything here predates us
+            job.dest_preexisting = info.exists
+        return resume_policy.decide(
+            info,
+            dest_preexisting=job.dest_preexisting,
+            is_directory=job.name.endswith("/"),
+            checksum_existing=self.settings.checksum_existing,
+        )
+
     async def _run_job(self, job: TransferJob) -> bool:
         attempt = 0
         max_attempts = 1 + max(0, self.settings.max_retries)
         while attempt < max_attempts:
+            decision = self._resume_decision(job)
             attempt += 1
             job.attempts += 1
             job.status = JobStatus.RUNNING
             job.last_error = None
             self._on_status()
+            if not decision.use_append:
+                self._on_line(f"[resume] {job.name}: {decision.reason}")
+            extra = ["--checksum"] if decision.checksum else None
             argv = build_rsync_argv(
                 self.target, job.remote_path, job.local_dest, self.caps,
                 rsync_bin=self.settings.rsync_bin,
                 keepalive_opts=self.settings.keepalive_opts,
                 timeout=self.settings.timeout,
                 bwlimit=self.settings.bwlimit,
-                append_verify_pref=self.settings.append_verify_pref,
+                append_verify_pref=(
+                    self.settings.append_verify_pref and decision.use_append
+                ),
                 protect_args_pref=self.settings.protect_args_pref,
+                extra_args=extra,
             )
+            self._xfr_count: Optional[int] = None
             rc = await self._runner.run(argv, self._make_sink(job))
 
             if rc == 0:
-                job.status = JobStatus.COMPLETED
-                self._on_line(f"[done] {job.name}")
+                # rsync exits 0 whether it transferred the file or skipped it;
+                # saying "done" for a skip is how the append bug stayed hidden
+                if self._xfr_count == 0:
+                    job.status = JobStatus.SKIPPED
+                    self._on_line(
+                        f"[skipped] {job.name}: already present, nothing transferred "
+                        f"(run 'verify' to confirm the contents match)"
+                    )
+                else:
+                    job.status = JobStatus.COMPLETED
+                    self._on_line(f"[done] {job.name}")
                 self._on_status()
                 return True
             if self._runner.cancelled or rc == 130:
@@ -173,10 +218,52 @@ class TransferManager:
     def _make_sink(self, job: TransferJob):
         def sink(line: str) -> None:
             self._on_line(line)
+            n = parse_xfr_count(line)
+            if n is not None:
+                self._xfr_count = n
             prog = parse_progress_line(line)
             if prog is not None:
                 self._on_progress(job, prog)
         return sink
+
+    async def verify(self, remote_path: str, name: str, local_dest: str) -> Optional[bool]:
+        """Compare a remote file against the local copy by checksum.
+
+        Returns True if they match, False if they differ, None if rsync failed.
+        Reads both copies in full but sends only checksums; nothing is written.
+        """
+        dest = Path(local_dest) / name.rstrip("/")
+        if not dest.exists():
+            self._on_line(f"[verify] {name}: no local copy")
+            return False
+        argv = build_rsync_argv(
+            self.target, remote_path, local_dest, self.caps,
+            rsync_bin=self.settings.rsync_bin,
+            keepalive_opts=self.settings.keepalive_opts,
+            timeout=self.settings.timeout,
+            bwlimit=self.settings.bwlimit,
+            append_verify_pref=False,      # never append while verifying
+            protect_args_pref=self.settings.protect_args_pref,
+            extra_args=["--dry-run", "--checksum", "--itemize-changes"],
+        )
+        # rsync itemizes a line per file it would change; none means identical
+        changed: list[str] = []
+
+        def sink(line: str) -> None:
+            self._on_line(line)
+            # itemized lines look like ">f.st...... name"
+            if line[:1] in "<>ch." and len(line) > 11 and line[1] in "fdLDS":
+                changed.append(line)
+
+        rc = await self._runner.run(argv, sink)
+        if rc != 0:
+            self._on_line(f"[verify] {name}: rsync failed (rc={rc})")
+            return None
+        match = not changed
+        self._on_line(
+            f"[verify] {name}: {'matches the remote copy' if match else 'DIFFERS from the remote copy'}"
+        )
+        return match
 
     async def stop(self) -> None:
         """Cancel the active job and halt the queue."""

@@ -33,6 +33,9 @@ DEFAULTS: dict = {
         "partial": True,
         "timeout": 120,
         "protect_args": True,
+        # when a file of unknown origin sits at the destination, compare by
+        # content instead of trusting size+mtime (reads both copies)
+        "checksum_existing": True,
         "bwlimit": 0,            # 0 = unlimited; KiB/s otherwise
         "continue_on_error": False,
         "max_retries": 3,

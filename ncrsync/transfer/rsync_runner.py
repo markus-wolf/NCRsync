@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shlex
 import signal
 from typing import Awaitable, Callable, Optional
@@ -22,6 +23,16 @@ log = logging.getLogger("ncrsync")
 TRANSIENT_EXIT_CODES = {10, 12, 30, 35}
 
 LineSink = Callable[[str], None]
+
+# rsync's progress output carries a running count of files actually transferred,
+# e.g. "(xfr#1, to-chk=0/1)". A run that ends at xfr#0 sent nothing.
+_XFR_RE = re.compile(r"xfr#(\d+)")
+
+
+def parse_xfr_count(line: str) -> Optional[int]:
+    """Files-transferred counter from a progress line, or None if absent."""
+    m = _XFR_RE.search(line)
+    return int(m.group(1)) if m else None
 
 
 def _format_source(target: SshTarget, remote_path: str, use_protect_args: bool) -> str:
@@ -42,8 +53,14 @@ def build_rsync_argv(
     bwlimit: int = 0,
     append_verify_pref: bool = True,
     protect_args_pref: bool = True,
+    extra_args: Optional[list[str]] = None,
 ) -> list[str]:
-    """Build the rsync argv for a single download."""
+    """Build the rsync argv for a single download.
+
+    ``append_verify_pref`` is the *effective* permission to append: the caller
+    combines the user's config preference with the per-job resume policy, so a
+    destination of unknown origin never gets ``--append``.
+    """
     use_protect = caps.protect_args and protect_args_pref
     source = _format_source(target, remote_path, use_protect)
     dest = local_dest if local_dest.endswith("/") else local_dest + "/"
@@ -53,6 +70,8 @@ def build_rsync_argv(
     )
     if bwlimit and bwlimit > 0:
         argv.append(f"--bwlimit={bwlimit}")
+    if extra_args:
+        argv += extra_args
     argv += ["-e", target.rsync_e_value(keepalive_opts)]
     argv += [source, dest]
     return argv

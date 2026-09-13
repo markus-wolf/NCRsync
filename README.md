@@ -93,9 +93,10 @@ and destination writability.
 `cd DIR` (remote), `lcd DIR` (local), `ls`, `ll` (long listing with
 permissions), `select PATTERN` (glob; matches files and directories),
 `deselect PATTERN` (inverse: clears matching selection marks and removes
-matching queued jobs; running jobs are kept), `queue`, `download`, `doctor`,
-`mkdir NAME` (local), `clear`, `quit`. The `:` prompt keeps arrow-up/down
-history.
+matching queued jobs; running jobs are kept), `queue`, `download`,
+`verify [PATTERN]` (checksum-compare the selected remote files against the
+local copies; reads both but transfers nothing), `doctor`, `mkdir NAME`
+(local), `clear`, `quit`. The `:` prompt keeps arrow-up/down history.
 
 ## Transfers
 
@@ -108,6 +109,22 @@ effective rsync version, `min(local, remote)`:
 | >= 3.2 | `-s` | `--append` | `--info=progress2` |
 | 3.0 – 3.1 | `-s` | `--append-verify` | 3.1: `progress2`, 3.0: `--progress` |
 | < 3.0 (degraded) | quoted paths + warning | `--partial` only | `--progress` |
+
+### Resuming safely
+
+rsync's append-resume assumes the bytes already at the destination are a
+correct beginning of the file — it compares lengths only, never contents. Given
+a file it did not write (a preallocated torrent leftover, a half-finished
+browser download) it will skip a broken file while reporting success, or append
+onto out-of-order data and silently corrupt it.
+
+NCRsync therefore appends only when the destination is empty or holds a partial
+it wrote itself, recorded per job. Anything else falls back to content
+comparison, which reclaims whatever is genuinely present and sends only
+checksums over the wire. The log says which was chosen and why.
+
+A run in which rsync transferred nothing is reported as `skipped`, not as a
+completed download. Use `verify` to confirm such a file really matches.
 
 Transient failures (rsync exit 10/12/30/35) retry automatically up to
 `max_retries` with backoff; other failures stop the queue unless
@@ -137,6 +154,8 @@ show_hidden = true
 append_verify = true     # resume via --append/--append-verify
 partial = true
 protect_args = true      # set false to force legacy path quoting (no -s)
+checksum_existing = true # compare by content when a file of unknown origin
+                         # is already at the destination
 timeout = 120
 bwlimit = 0              # KiB/s, 0 = unlimited
 continue_on_error = false

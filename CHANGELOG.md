@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.5.0 — 2026-09-13
+
+### Fixed
+
+- **Append-resume no longer trusts a file it did not write.** rsync's
+  `--append` assumes the bytes at the destination are a correct prefix of the
+  source and checks only the length, never the contents. A torrent client that
+  preallocates a file to its full size made rsync skip it, transfer nothing,
+  exit successfully, and leave a corrupt file — reported as a completed
+  download with an absurd speedup figure. A leftover *shorter* than the source
+  was worse still: the missing tail was appended onto out-of-order data,
+  silently corrupting the file with no size mismatch to notice.
+  `--append-verify` did not help; a skipped file is never checksummed.
+
+  Append is now permitted only when the destination is empty or holds a partial
+  ncrsync itself wrote, recorded per job in `queue.json`. Everything else falls
+  back to content comparison, which reclaims what is genuinely present and
+  sends only checksums. The log states which strategy was chosen and why.
+
+- **A run that transferred nothing is reported as `skipped`**, not as a
+  completed download. rsync exits 0 either way, which is how this stayed
+  invisible.
+
+### Added
+
+- `verify [PATTERN]` command: checksum-compare selected remote files against
+  the local copies. Reads both ends in full, transfers nothing, writes nothing.
+- `[transfer] checksum_existing` (default `true`): force content comparison
+  when a file of unknown origin is already at the destination, instead of
+  trusting size and mtime.
+
+### Changed
+
+- `queue.json` gains a `dest_preexisting` field. Older queue files load
+  normally; the missing field reads as "origin unknown", which declines to
+  append.
+
 ## 0.4.1 — 2026-09-13
 
 - Versioning scheme aligned with the other projects here: `ncrsync/__init__.py`

@@ -111,6 +111,7 @@ class NCRsync(App):
             bwlimit=t.get("bwlimit", 0),
             append_verify_pref=t.get("append_verify", True),
             protect_args_pref=t.get("protect_args", True),
+            checksum_existing=t.get("checksum_existing", True),
             continue_on_error=t.get("continue_on_error", False),
             max_retries=t.get("max_retries", 3),
             retry_delay_seconds=t.get("retry_delay_seconds", 5),
@@ -132,7 +133,7 @@ class NCRsync(App):
         yield Static("", id="status")
         yield RichLog(id="log", highlight=True, markup=True, wrap=False)
         yield CommandInput(
-            placeholder=": command (cd, lcd, ls, ll, select, deselect, queue, download, doctor, mkdir, clear, quit)",
+            placeholder=": command (cd, lcd, ls, ll, select, deselect, queue, download, verify, doctor, mkdir, clear, quit)",
             id="command",
         )
         yield Footer()
@@ -427,6 +428,30 @@ class NCRsync(App):
         await self.manager.stop()
         self.log_line("[yellow]cancel requested[/]")
 
+    @work(exclusive=True, group="transfer")
+    async def verify_worker(self, pattern: str) -> None:
+        """Checksum-compare remote files against the local copies.
+
+        Targets the remote selection, or the pattern if one is given, or the
+        cursor entry. Reads both copies but transfers nothing.
+        """
+        pane = self.query_one("#remote", FilePane)
+        if pattern:
+            targets = [e for e in pane.entries
+                       if e.kind == "file" and fnmatch.fnmatch(e.name, pattern)]
+        elif self.remote_selected:
+            targets = [e for e in pane.entries if e.path in self.remote_selected]
+        else:
+            cur = pane.entry_at_cursor()
+            targets = [cur] if cur and cur.kind == "file" else []
+        targets = [e for e in targets if e.kind == "file"]
+        if not targets:
+            self.log_line("[dim]verify: select a remote file, or give a pattern[/]")
+            return
+        self.log_line(f"[bold]verifying[/] {len(targets)} file(s) by checksum - reads both copies")
+        for e in targets:
+            await self.manager.verify(e.path, e.name, str(self.local.cwd))
+
     @work(exclusive=True, group="doctor")
     async def run_doctor_worker(self) -> None:
         await run_doctor(self.target, self.config.rsync_bin, self.local.cwd, self.log_raw)
@@ -482,6 +507,8 @@ class NCRsync(App):
             self.download()
         elif cmd == "doctor":
             self.run_doctor_worker()
+        elif cmd == "verify":
+            self.verify_worker(arg or "")
         elif cmd == "clear":
             self.query_one("#log", RichLog).clear()
         elif cmd in ("quit", "exit", "q"):

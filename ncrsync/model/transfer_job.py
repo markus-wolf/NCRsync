@@ -27,6 +27,11 @@ class TransferJob:
     status: JobStatus = JobStatus.QUEUED
     last_error: Optional[str] = None
     attempts: int = 0
+    #: Was something already at the destination when this job first ran?
+    #: False -> the partial there is ours and may be appended to.
+    #: True  -> it came from elsewhere; never append onto it.
+    #: None  -> not yet determined (set on first run; None in older queue.json).
+    dest_preexisting: Optional[bool] = None
 
     def to_dict(self) -> dict:
         return {
@@ -36,6 +41,7 @@ class TransferJob:
             "status": self.status.value,
             "last_error": self.last_error,
             "attempts": self.attempts,
+            "dest_preexisting": self.dest_preexisting,
         }
 
     @classmethod
@@ -55,4 +61,7 @@ class TransferJob:
             status=status,
             last_error=d.get("last_error"),
             attempts=d.get("attempts", 0),
+            # absent in queue.json written before this field existed; None
+            # makes the resume policy treat the destination as unknown origin
+            dest_preexisting=d.get("dest_preexisting"),
         )
