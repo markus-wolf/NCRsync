@@ -15,6 +15,7 @@ import signal
 from typing import Awaitable, Callable, Optional
 
 from ..model.connection_profile import SshTarget
+from ..model.transfer_job import Direction
 from .rsync_caps import RsyncCaps, select_flags
 
 log = logging.getLogger("ncrsync")
@@ -35,18 +36,26 @@ def parse_xfr_count(line: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def _format_source(target: SshTarget, remote_path: str, use_protect_args: bool) -> str:
+def _format_remote_endpoint(target: SshTarget, remote_path: str,
+                            use_protect_args: bool) -> str:
+    """Format the ``host:path`` side. Applies wherever the remote end sits -
+    source for a download, destination for an upload."""
     if use_protect_args:
         return f"{target.host}:{remote_path}"          # raw, -s protects it
     return f"{target.host}:{shlex.quote(remote_path)}"  # legacy/disabled: quote for remote shell
 
 
+def _as_dir(path: str) -> str:
+    return path if path.endswith("/") else path + "/"
+
+
 def build_rsync_argv(
     target: SshTarget,
     remote_path: str,
-    local_dest: str,
+    local_path: str,
     caps: RsyncCaps,
     *,
+    direction: Direction = Direction.DOWNLOAD,
     rsync_bin: str = "rsync",
     keepalive_opts: Optional[list[str]] = None,
     timeout: int = 120,
@@ -55,15 +64,25 @@ def build_rsync_argv(
     protect_args_pref: bool = True,
     extra_args: Optional[list[str]] = None,
 ) -> list[str]:
-    """Build the rsync argv for a single download.
+    """Build the rsync argv for a single transfer.
+
+    For a download ``remote_path`` is the source file and ``local_path`` the
+    destination directory; for an upload the roles are reversed. The
+    destination always gets a trailing slash, the source never does.
 
     ``append_verify_pref`` is the *effective* permission to append: the caller
     combines the user's config preference with the per-job resume policy, so a
     destination of unknown origin never gets ``--append``.
     """
     use_protect = caps.protect_args and protect_args_pref
-    source = _format_source(target, remote_path, use_protect)
-    dest = local_dest if local_dest.endswith("/") else local_dest + "/"
+    remote_ep = _format_remote_endpoint(target, remote_path, use_protect)
+    if direction is Direction.DOWNLOAD:
+        source, dest = remote_ep, _as_dir(local_path)
+    else:
+        # uploading: the remote end is the destination directory
+        source, dest = local_path, _format_remote_endpoint(
+            target, _as_dir(remote_path), use_protect
+        )
     argv = [rsync_bin, "-av", "--human-readable", f"--timeout={timeout}"]
     argv += select_flags(
         caps, append_verify_pref=append_verify_pref, protect_args_pref=protect_args_pref

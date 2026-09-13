@@ -29,11 +29,17 @@ SPARSE_RATIO = 0.95
 
 @dataclass(frozen=True)
 class DestInfo:
-    """What the filesystem says about the destination."""
+    """What the filesystem says about the destination.
+
+    ``known`` is False when the destination could not be inspected at all - an
+    unreachable remote, or one without GNU find. That is not the same as
+    knowing it is empty, and must not be read as permission to append.
+    """
 
     exists: bool
     size: int = 0
     allocated: int = 0
+    known: bool = True
 
     @property
     def sparse(self) -> bool:
@@ -76,6 +82,11 @@ def decide(
         # a directory job covers many files; provenance cannot be reasoned
         # about per-file here, so let rsync compare contents
         return ResumeDecision(False, False, "directory transfer - comparing contents")
+    if not dest.known:
+        return ResumeDecision(
+            False, checksum_existing,
+            "could not inspect the destination - comparing contents",
+        )
     if not dest.exists:
         return ResumeDecision(True, False, "no file at destination")
     if dest_preexisting:

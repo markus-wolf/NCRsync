@@ -92,7 +92,7 @@ async def test_foreign_queue_not_recovered_or_clobbered(tmp_path):
 async def test_own_queue_triggers_recovery(tmp_path):
     state = tmp_path / "state"
     QueueStore(base=state).save(
-        "myserver", "/r", "/l", [TransferJob("/r/x.mkv", "/l", "x.mkv", JobStatus.QUEUED)]
+        "myserver", "/r", "/l", [TransferJob("/r/x.mkv", "/l", "x.mkv", status=JobStatus.QUEUED)]
     )
     app = make_app(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Upload engine (design unit 1). The transfer layer can now move files in either
+direction; **nothing in the UI reaches it yet**, so behaviour is unchanged for
+users until unit 2 lands.
+
+- `TransferJob` carries a `direction`, and names its two endpoints
+  `remote_path` / `local_path`. The source side holds the item's full path, the
+  destination side the directory it lands in, and which is which follows the
+  direction.
+- `build_rsync_argv` formats the `host:path` end wherever it sits. The two path
+  rules now follow the remote side rather than the source position: raw under
+  `-s`, quoted in the `< 3.0` degraded mode.
+- Upload destinations are probed over SSH in a single batched `find` per queue
+  run, not one call per job, and feed the existing resume policy unchanged.
+- `DestInfo` gains `known`. A destination that could not be inspected — an
+  unreachable host, or one without GNU find — is no longer indistinguishable
+  from an empty one, and is never appended to. This closed two real defects
+  caught by the new tests.
+- Queue dedupe keys on direction, so uploading and downloading the same path
+  are separate jobs.
+- `queue.json` is version 2: per-job `direction`, and `local_dest` renamed to
+  `local_path`. Version 1 files load unchanged as downloads.
+
 ## 0.5.0 — 2026-09-13
 
 ### Fixed

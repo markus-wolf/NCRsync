@@ -121,6 +121,7 @@ class NCRsync(App):
             on_line=self.log_raw,
             on_status=self._sync_queue,
             on_progress=self._on_progress,
+            remote_stat=self.remote.stat_many,
         )
 
     # -- layout --

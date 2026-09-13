@@ -21,7 +21,9 @@ class QueueStore:
     def save(self, host: str, remote_cwd: str, local_cwd: str,
              jobs: list[TransferJob]) -> None:
         data = {
-            "version": 1,
+            # v2 adds per-job direction and renames local_dest -> local_path;
+            # TransferJob.from_dict still reads v1 files
+            "version": 2,
             "host": host,
             "remote_cwd": remote_cwd,
             "local_cwd": local_cwd,

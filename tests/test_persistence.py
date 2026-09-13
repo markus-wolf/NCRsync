@@ -11,8 +11,8 @@ from ncrsync.state.state_store import StateStore
 def test_queue_round_trip(tmp_path: Path):
     store = QueueStore(base=tmp_path)
     jobs = [
-        TransferJob("/r/a.mkv", "/local", "a.mkv", JobStatus.COMPLETED),
-        TransferJob("/r/b.mkv", "/local", "b.mkv", JobStatus.QUEUED),
+        TransferJob("/r/a.mkv", "/local", "a.mkv", status=JobStatus.COMPLETED),
+        TransferJob("/r/b.mkv", "/local", "b.mkv", status=JobStatus.QUEUED),
     ]
     store.save("myserver", "/r", "/local", jobs)
     data = store.load()
@@ -24,16 +24,16 @@ def test_queue_round_trip(tmp_path: Path):
 def test_recovery_detection(tmp_path: Path):
     store = QueueStore(base=tmp_path)
     # all completed -> nothing to recover
-    store.save("h", "/r", "/l", [TransferJob("/r/a", "/l", "a", JobStatus.COMPLETED)])
+    store.save("h", "/r", "/l", [TransferJob("/r/a", "/l", "a", status=JobStatus.COMPLETED)])
     assert not QueueStore.has_unfinished(store.load())
     # a queued item -> recover
-    store.save("h", "/r", "/l", [TransferJob("/r/b", "/l", "b", JobStatus.QUEUED)])
+    store.save("h", "/r", "/l", [TransferJob("/r/b", "/l", "b", status=JobStatus.QUEUED)])
     assert QueueStore.has_unfinished(store.load())
 
 
 def test_running_job_treated_as_interrupted(tmp_path: Path):
     store = QueueStore(base=tmp_path)
-    store.save("h", "/r", "/l", [TransferJob("/r/c", "/l", "c", JobStatus.RUNNING)])
+    store.save("h", "/r", "/l", [TransferJob("/r/c", "/l", "c", status=JobStatus.RUNNING)])
     data = store.load()
     # reloaded as queued so it resumes
     assert data["jobs"][0].status == JobStatus.QUEUED

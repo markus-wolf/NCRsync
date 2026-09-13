@@ -12,10 +12,10 @@ import fnmatch
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from ..model.connection_profile import SshTarget
-from ..model.transfer_job import JobStatus, TransferJob
+from ..model.transfer_job import Direction, JobStatus, TransferJob
 from . import resume_policy
 from .progress_parser import Progress, parse_progress_line
 from .rsync_caps import RsyncCaps
@@ -54,7 +54,15 @@ class TransferManager:
         on_line: Callable[[str], None] = lambda s: None,
         on_status: Callable[[], None] = lambda: None,
         on_progress: Callable[[TransferJob, Progress], None] = lambda j, p: None,
+        remote_stat: Optional[
+            Callable[[list[str]], Awaitable[dict[str, resume_policy.DestInfo]]]
+        ] = None,
     ):
+        #: batched remote stat, used to judge upload destinations. Injected so
+        #: the transfer layer does not reach into the remote browser. Without
+        #: it, upload destinations read as unknown and are never appended to.
+        self._remote_stat = remote_stat
+        self._remote_dest: dict[str, resume_policy.DestInfo] = {}
         self.target = target
         self.caps = caps
         self.settings = settings
@@ -68,10 +76,20 @@ class TransferManager:
         self._on_progress = on_progress
 
     # -- queue management --
-    def add(self, remote_path: str, name: str, local_dest: str) -> bool:
-        if any(j.remote_path == remote_path for j in self.jobs):
+    def add(self, remote_path: str, name: str, local_path: str,
+            direction: Direction = Direction.DOWNLOAD) -> bool:
+        """Queue one transfer. Returns False if an identical job is queued.
+
+        The key includes direction: uploading and downloading the same path are
+        different jobs, and one must not shadow the other.
+        """
+        key = (direction, remote_path, name)
+        if any((j.direction, j.remote_path, j.name) == key for j in self.jobs):
             return False
-        self.jobs.append(TransferJob(remote_path=remote_path, local_dest=local_dest, name=name))
+        self.jobs.append(TransferJob(
+            remote_path=remote_path, local_path=local_path, name=name,
+            direction=direction,
+        ))
         self._on_status()
         return True
 
@@ -117,8 +135,9 @@ class TransferManager:
         self._stopping = False
         pending = self.pending
         if not pending:
-            self._on_line("[queue empty - nothing to download]")
+            self._on_line("[queue empty - nothing to transfer]")
             return
+        await self._prefetch_remote_dests(pending)
         self._on_line(f"[starting {len(pending)} job(s)]")
         for job in pending:
             if self._stopping:
@@ -129,19 +148,40 @@ class TransferManager:
                 break
 
     def dest_file(self, job: TransferJob) -> Path:
-        """Local path rsync will write for this job."""
-        return Path(job.local_dest) / job.name.rstrip("/")
+        """Local path rsync will write. Meaningful for downloads only."""
+        return Path(job.dest_path)
+
+    async def _prefetch_remote_dests(self, jobs: list[TransferJob]) -> None:
+        """Stat every upload destination in one round trip, before the queue runs."""
+        uploads = [j for j in jobs if j.direction is Direction.UPLOAD]
+        if not uploads or self._remote_stat is None:
+            return
+        paths = sorted({j.dest_path for j in uploads})
+        try:
+            self._remote_dest = await self._remote_stat(paths)
+        except Exception as exc:  # a failed probe must not abort the queue
+            log.info("remote destination probe failed: %s", exc)
+            self._remote_dest = {}
+
+    def _dest_info(self, job: TransferJob) -> resume_policy.DestInfo:
+        if job.direction is Direction.DOWNLOAD:
+            return resume_policy.inspect(self.dest_file(job))
+        # uploads: from the batched probe. A path the probe never covered is
+        # unknown, not empty - the policy must not read it as free to append.
+        return self._remote_dest.get(
+            job.dest_path, resume_policy.DestInfo(exists=False, known=False)
+        )
 
     def _resume_decision(self, job: TransferJob) -> resume_policy.ResumeDecision:
         """Record the destination's origin on first run, then decide."""
-        info = resume_policy.inspect(self.dest_file(job))
+        info = self._dest_info(job)
         if job.dest_preexisting is None and job.attempts == 0:
             # first time we touch this destination: anything here predates us
             job.dest_preexisting = info.exists
         return resume_policy.decide(
             info,
             dest_preexisting=job.dest_preexisting,
-            is_directory=job.name.endswith("/"),
+            is_directory=job.is_directory,
             checksum_existing=self.settings.checksum_existing,
         )
 
@@ -159,7 +199,8 @@ class TransferManager:
                 self._on_line(f"[resume] {job.name}: {decision.reason}")
             extra = ["--checksum"] if decision.checksum else None
             argv = build_rsync_argv(
-                self.target, job.remote_path, job.local_dest, self.caps,
+                self.target, job.remote_path, job.local_path, self.caps,
+                direction=job.direction,
                 rsync_bin=self.settings.rsync_bin,
                 keepalive_opts=self.settings.keepalive_opts,
                 timeout=self.settings.timeout,
